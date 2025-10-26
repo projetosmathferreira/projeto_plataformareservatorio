@@ -3,8 +3,6 @@
 // export DATABASE_URL="postgresql://.../railway?sslmode=require"
 // node admin_create_client.js '{"nome":"Luciana","email":"luciana@ex.com","senha":"1234","dbPassword":"1234"}'
 
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-
 import { Client } from "pg";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
@@ -32,14 +30,14 @@ async function main() {
 
   const admin = new Client({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
+    ssl: { rejectUnauthorized: false }, // aceita SSL do Railway só nesta conexão
   });
   await admin.connect();
 
   try {
     await admin.query("BEGIN");
 
-    // cria cliente com placeholders
+    // cria cliente
     const ins = await admin.query(
       "INSERT INTO clientes (nome, email, db_role, password_hash) VALUES ($1,$2,$3,$4) RETURNING id",
       [nome, email, "to_be_set", "to_be_set"]
@@ -51,7 +49,7 @@ async function main() {
     const dbPwd = dbPassword || senha || crypto.randomBytes(10).toString("hex");
     const dbPwdLit = escapeLiteral(dbPwd);
 
-    // cria ROLE (DDL não aceita placeholders)
+    // DDL não aceita placeholders: usar literais escapados
     await admin.query(`CREATE ROLE ${roleIdent} WITH LOGIN PASSWORD '${dbPwdLit}'`);
 
     // hash da senha para login web
