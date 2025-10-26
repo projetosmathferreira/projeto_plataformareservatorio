@@ -1,6 +1,6 @@
 // admin_create_client.js
 // Cria clientes e roles PostgreSQL manualmente
-// Uso: node admin_create_client.js '{"nome":"Luis","email":"luis@ex.com","dbPassword":"MinhaSenha123","createReservatorio":true}'
+// Uso (Linux/Mac): node admin_create_client.js '{"nome":"Luis","email":"luis@ex.com","dbPassword":"MinhaSenha123","createReservatorio":true}'
 
 import { Client } from "pg";
 import bcrypt from "bcrypt";
@@ -9,6 +9,15 @@ import crypto from "crypto";
 if (!process.env.DATABASE_URL) {
   console.error("Defina a variável DATABASE_URL");
   process.exit(1);
+}
+
+// helpers de escape para evitar problemas com aspas
+function escapeLiteral(str = "") {
+  return String(str).replace(/'/g, "''");
+}
+function escapeIdent(str = "") {
+  // roleName é no formato client_<id>, então já é seguro; ainda assim, removemos caracteres fora do permitido
+  return String(str).replace(/[^a-zA-Z0-9_]/g, "");
 }
 
 async function main() {
@@ -36,14 +45,17 @@ async function main() {
     const roleName = `client_${id}`;
     const pwd = dbPassword || crypto.randomBytes(10).toString("hex");
 
-    await admin.query(`CREATE ROLE ${roleName} WITH LOGIN PASSWORD $1`, [pwd]);
+    // <<< AQUI ESTAVA O PROBLEMA: não usar $1; use literal escapado >>>
+    const roleIdent = escapeIdent(roleName);
+    const pwdLit = escapeLiteral(pwd);
+    await admin.query(`CREATE ROLE ${roleIdent} WITH LOGIN PASSWORD '${pwdLit}'`);
+
     const hash = bcrypt.hashSync(pwd, 10);
 
-    await admin.query("UPDATE clientes SET db_role=$1, password_hash=$2 WHERE id=$3", [
-      roleName,
-      hash,
-      id,
-    ]);
+    await admin.query(
+      "UPDATE clientes SET db_role=$1, password_hash=$2 WHERE id=$3",
+      [roleName, hash, id]
+    );
 
     if (createReservatorio) {
       await admin.query(
@@ -57,6 +69,7 @@ async function main() {
   } catch (e) {
     await admin.query("ROLLBACK");
     console.error("Erro:", e.message || e);
+    process.exit(1);
   } finally {
     await admin.end();
   }
