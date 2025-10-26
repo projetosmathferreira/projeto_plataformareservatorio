@@ -1,3 +1,10 @@
+// Verifica se já existe login ativo
+const token = localStorage.getItem('token');
+if (token) {
+  // redireciona direto pro dashboard se já estiver autenticado
+  window.location.href = 'dashboard.html';
+}
+
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
 
@@ -10,13 +17,14 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/auth/login', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, senha })
     });
 
     const data = await res.json();
     if (data.token) {
       localStorage.setItem('token', data.token);
+      localStorage.setItem('loggedAt', Date.now()); // opcional, registro da hora do login
       window.location.href = 'dashboard.html';
     } else {
       msg.textContent = data.error || 'Credenciais inválidas';
