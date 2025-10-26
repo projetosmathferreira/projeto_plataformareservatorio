@@ -8,7 +8,10 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import cors from "cors";
 
-const { Pool } = pkg;
+// aceitar cert autoassinado (Railway)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
+const { Pool, Client } = pkg;
 const app = express();
 app.use(express.json());
 app.use(cors());
@@ -28,12 +31,15 @@ app.post("/auth/login", async (req, res) => {
     return res.status(400).json({ error: "email e senha obrigatórios" });
 
   try {
-    const r = await pool.query("SELECT id, password_hash FROM clientes WHERE email=$1", [email]);
+    const r = await pool.query(
+      "SELECT id, email, password_hash FROM clientes WHERE email=$1",
+      [email]
+    );
     if (!r.rows.length) return res.status(401).json({ error: "usuário não encontrado" });
     const ok = await bcrypt.compare(senha, r.rows[0].password_hash);
     if (!ok) return res.status(401).json({ error: "senha incorreta" });
 
-    const token = jwt.sign({ id: r.rows[0].id }, JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ id: r.rows[0].id, email: r.rows[0].email }, JWT_SECRET, { expiresIn: "7d" });
     res.json({ token });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -53,27 +59,35 @@ function auth(req, res, next) {
 
 // ======== RESERVATÓRIOS ======== //
 app.get("/reservatorios", auth, async (req, res) => {
-  const r = await pool.query(
-    "SELECT id, nome, volume_l FROM reservatorios WHERE cliente_id=$1 ORDER BY id",
-    [req.user.id]
-  );
-  res.json({ reservatorios: r.rows });
+  try {
+    const r = await pool.query(
+      "SELECT id, nome, volume_l FROM reservatorios WHERE cliente_id=$1 ORDER BY id",
+      [req.user.id]
+    );
+    res.json({ reservatorios: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ======== REGISTROS ======== //
 app.get("/reservatorios/:id/registros", auth, async (req, res) => {
-  const rid = req.params.id;
-  const ok = await pool.query(
-    "SELECT id FROM reservatorios WHERE id=$1 AND cliente_id=$2",
-    [rid, req.user.id]
-  );
-  if (!ok.rows.length) return res.status(403).json({ error: "reservatório não autorizado" });
+  try {
+    const rid = Number(req.params.id);
+    const ok = await pool.query(
+      "SELECT id FROM reservatorios WHERE id=$1 AND cliente_id=$2",
+      [rid, req.user.id]
+    );
+    if (!ok.rows.length) return res.status(403).json({ error: "reservatório não autorizado" });
 
-  const r = await pool.query(
-    "SELECT * FROM registros WHERE reservatorio_id=$1 ORDER BY recorded_at DESC",
-    [rid]
-  );
-  res.json({ registros: r.rows });
+    const r = await pool.query(
+      "SELECT * FROM registros WHERE reservatorio_id=$1 ORDER BY recorded_at DESC",
+      [rid]
+    );
+    res.json({ registros: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ======== SSE STREAM (tempo real) ======== //
@@ -98,20 +112,36 @@ app.get("/stream", async (req, res) => {
   }
 });
 
-// listener de notificações do PostgreSQL
-const listenClient = new pkg.Client({
+// ======== LISTEN/NOTIFY DO POSTGRES ======== //
+const listenClient = new Client({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
 await listenClient.connect();
-await listenClient.query("LISTEN new_registro");
+await listenClient.query("LISTEN registros_channel"); // canal certo do trigger
 
 listenClient.on("notification", async (msg) => {
-  const payload = JSON.parse(msg.payload);
-  for (const c of clients) {
-    if (c.id === payload.cliente_id) {
-      c.res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  try {
+    // payload do trigger: { reservatorio_id, registro: { ...NEW } }
+    const payload = JSON.parse(msg.payload);
+    const { reservatorio_id } = payload;
+
+    // descobrir o cliente dono desse reservatório
+    const resOwn = await pool.query(
+      "SELECT cliente_id FROM reservatorios WHERE id=$1",
+      [reservatorio_id]
+    );
+    if (!resOwn.rows.length) return;
+    const clienteId = resOwn.rows[0].cliente_id;
+
+    // enviar somente para conexões SSE do dono
+    for (const c of clients) {
+      if (c.id === clienteId) {
+        c.res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      }
     }
+  } catch (e) {
+    console.error("erro ao processar notification:", e);
   }
 });
 
