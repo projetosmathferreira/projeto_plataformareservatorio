@@ -2,6 +2,8 @@
 // Uso (Linux/Mac):
 // export DATABASE_URL="postgresql://.../railway?sslmode=require"
 // node admin_create_client.js '{"nome":"Luciana","email":"luciana@ex.com","senha":"1234","dbPassword":"1234"}'
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 
 import { Client } from "pg";
 import bcrypt from "bcrypt";
