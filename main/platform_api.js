@@ -1,21 +1,26 @@
 // platform_api.js
-// API principal da plataforma (PostgreSQL + SSE + JWT)
 // npm i express pg bcrypt jsonwebtoken cors
+
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 import express from "express";
 import pkg from "pg";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import cors from "cors";
-
-// aceitar cert autoassinado (Railway)
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+import path from "path";
+import { fileURLToPath } from "url";
 
 const { Pool, Client } = pkg;
 const app = express();
+
 app.use(express.json());
 app.use(cors());
-app.use(express.static("public"));
+
+// servir /public (ajuste o caminho se necessário)
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const publicDir = path.resolve(__dirname, "./public");
+app.use(express.static(publicDir));
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -118,7 +123,7 @@ const listenClient = new Client({
   ssl: { rejectUnauthorized: false },
 });
 await listenClient.connect();
-await listenClient.query("LISTEN registros_channel"); // canal certo do trigger
+await listenClient.query("LISTEN registros_channel"); // canal do trigger
 
 listenClient.on("notification", async (msg) => {
   try {
@@ -126,7 +131,7 @@ listenClient.on("notification", async (msg) => {
     const payload = JSON.parse(msg.payload);
     const { reservatorio_id } = payload;
 
-    // descobrir o cliente dono desse reservatório
+    // descobrir o cliente dono
     const resOwn = await pool.query(
       "SELECT cliente_id FROM reservatorios WHERE id=$1",
       [reservatorio_id]
@@ -134,7 +139,7 @@ listenClient.on("notification", async (msg) => {
     if (!resOwn.rows.length) return;
     const clienteId = resOwn.rows[0].cliente_id;
 
-    // enviar somente para conexões SSE do dono
+    // enviar somente para SSE do dono
     for (const c of clients) {
       if (c.id === clienteId) {
         c.res.write(`data: ${JSON.stringify(payload)}\n\n`);
