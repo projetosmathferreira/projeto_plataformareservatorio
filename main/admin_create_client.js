@@ -6,6 +6,8 @@ import { Client } from "pg";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 if (!process.env.DATABASE_URL) {
   console.error("Defina a variável DATABASE_URL");
   process.exit(1);
