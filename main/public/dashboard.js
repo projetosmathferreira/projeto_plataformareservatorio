@@ -28,14 +28,15 @@ async function carregarReservatorios() {
       <table id="table-${r.id}" class="w-full border text-sm">
         <thead class="bg-gray-200">
           <tr>
-            <th class="border p-1">ID</th>
+            <!-- ID oculto (removido) -->
             <th class="border p-1">Nível (%)</th>
+            <th class="border p-1">Litragem Atual (L)</th>
             <th class="border p-1">Temperatura (°C)</th>
             <th class="border p-1">pH</th>
             <th class="border p-1">Data / Hora</th>
           </tr>
         </thead>
-        <tbody></tbody>
+        <tbody data-reservatorio-id="${r.id}" data-volume="${r.volume_l}"></tbody>
       </table>
     `;
     conteudo.appendChild(bloco);
@@ -53,22 +54,35 @@ async function carregarRegistros(reservatorioId) {
   const j = await res.json();
   const tbody = document.querySelector(`#table-${reservatorioId} tbody`);
   if (!tbody) return;
+
   tbody.innerHTML = ''; // limpa tabela
-  (j.registros || []).forEach(addLinha(tbody)); // adiciona cada linha
+
+  // A API já devolve DESC, e usamos prepend nas linhas.
+  // Para manter "mais recentes em cima", invertimos a lista antes de aplicar prepend.
+  (j.registros || [])
+    .slice()         // cópia
+    .reverse()       // inverte para mais antigos primeiro
+    .forEach(addLinha(tbody)); // prepend garante que o último (mais recente) fique no topo
 }
 
 // === ADICIONA UMA LINHA NA TABELA ===
 function addLinha(tbody) {
   return (l) => {
+    const vol = parseFloat(tbody.dataset.volume || '0') || 0;
+    const litrosAtuais = (Number(l.nivel_percent) || 0) * vol / 100;
+    const litrosFmt = Number.isFinite(litrosAtuais) ? litrosAtuais.toFixed(0) : '-';
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td class="border p-1">${l.id}</td>
-      <td class="border p-1">${l.nivel_percent}</td>
-      <td class="border p-1">${l.temperatura_c}</td>
+      <!-- <td class="border p-1">${l.id}</td>  ID oculto -->
+      <td class="border p-1">${Number(l.nivel_percent).toFixed(1)}</td>
+      <td class="border p-1">${litrosFmt}</td>
+      <td class="border p-1">${Number(l.temperatura_c).toFixed(1)}</td>
       <td class="border p-1">${l.ph}</td>
       <td class="border p-1">${new Date(l.recorded_at).toLocaleString()}</td>
     `;
-    tbody.prepend(tr); // insere no topo (mais recente primeiro)
+    // usamos prepend para que a linha mais nova sempre apareça no topo
+    tbody.prepend(tr);
   };
 }
 
@@ -78,7 +92,7 @@ function iniciarStream() {
   evt.onmessage = (e) => {
     const d = JSON.parse(e.data);
     const tbody = document.querySelector(`#table-${d.reservatorio_id} tbody`);
-    if (tbody) addLinha(tbody)(d.registro);
+    if (tbody) addLinha(tbody)(d.registro); // novos sempre no topo
   };
   evt.onerror = () => console.warn('Conexão SSE perdida. Tentando reconectar...');
 }

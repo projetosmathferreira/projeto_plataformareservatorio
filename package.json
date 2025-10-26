@@ -4,8 +4,9 @@
   "type": "module",
   "main": "platform_api.js",
   "scripts": {
-    "start": "node platform_api.js"
-  },
+  "start": "node main/platform_api.js"
+}
+,
   "dependencies": {
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
