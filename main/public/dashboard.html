@@ -1,18 +1,36 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Painel do Usuário</title>
+  <title>Dashboard 2.0</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-50 min-h-screen">
-  <nav class="bg-blue-700 text-white p-3 flex justify-between items-center">
-    <h1 class="text-lg font-semibold">Plataforma de Reservatórios</h1>
-    <button id="logout" class="bg-red-500 hover:bg-red-600 px-3 py-1 rounded">Sair</button>
-  </nav>
+<body class="bg-gray-100 text-gray-900">
+  <header class="p-4 bg-gray-900 text-white flex justify-between items-center sticky top-0 z-10">
+    <h1 class="text-xl font-semibold">Dashboard</h1>
+    <nav class="space-x-3">
+     <a id="adminLink" href="admin.html"
+   class="hidden bg-slate-700 hover:bg-slate-600 text-white px-3 py-1 rounded text-sm">
+  Admin
+</a>
+      <button id="logout" class="bg-red-600 hover:bg-red-500 px-3 py-1 rounded text-sm">Sair</button>
+    </nav>
+  </header>
 
-  <main id="conteudo" class="p-4"></main>
+  <main class="max-w-6xl mx-auto p-4">
+
+    <!-- Loading overlay -->
+<div id="loading" class="relative hidden bg-white flex items-center justify-center">
+  <div class="h-12 w-12 rounded-full border-4 border-blue-500 border-t-transparent animate-spin"></div>
+</div>
+
+
+    <div id="containers" class="space-y-6"></div>
+    <div id="vazio" class="hidden text-center text-sm text-gray-500 py-12">
+      Nenhum reservatório encontrado.
+    </div>
+  </main>
 
   <script src="dashboard.js"></script>
 </body>
