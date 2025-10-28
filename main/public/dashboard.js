@@ -104,7 +104,7 @@ function drawTank(canvas, pct) {
   ctx.save();
   tankClipPath();
   ctx.clip();
-
+  
   const grad = ctx.createLinearGradient(0, fillTop, 0, bottom);
   grad.addColorStop(0, "rgba(59,130,246,0.88)");
   grad.addColorStop(1, "rgba(59,130,246,0.55)");
@@ -206,7 +206,7 @@ function createReservatorioCard(r) {
             <span id="litrosTxt-${r.id}" class="font-medium text-gray-900">-- / ${r.volume_l} L</span>
           </div>
           <div class="w-full h-2 bg-gray-200 rounded overflow-hidden">
-            <div id="litrosBar-${r.id}" class="h-2 bg-blue-600" style="width:0%"></div>
+            <div id="litrosBar-${r.id}" class="h-2 bg-green-600" style="width:0%"></div>
           </div>
         </div>
 
