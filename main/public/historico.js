@@ -12,12 +12,21 @@ document.addEventListener('DOMContentLoaded', () => {
   let fromI = document.getElementById('from');
   let toI   = document.getElementById('to');
 
+  // Botão PDF (opcional no HTML)
+  const btnPDF = document.getElementById('btnPDF');
+
   // se inputs não existirem pelos ids, tenta pegar os dois primeiros datetime-local
   if (!fromI || !toI) {
     const dts = Array.from(document.querySelectorAll('input[type="datetime-local"]'));
     fromI = fromI || dts[0] || null;
     toI   = toI   || dts[1] || null;
   }
+
+  //logout
+  document.getElementById('logout').onclick = () => {
+    localStorage.removeItem('token');
+    window.location.href = 'index.html';
+  };
 
   // params da URL
   const params = new URLSearchParams(location.search);
@@ -39,6 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const pad = (n) => String(n).padStart(2, '0');
     return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   }
+
+  // ===== mantém em memória o último resultado para exportação =====
+  let lastRegs = [];
 
   async function carregar({ from = null, to = null } = {}) {
     if (tbody) tbody.innerHTML = '';
@@ -67,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const j = await res.json();
     const regs = j.registros || [];
+    lastRegs = regs; // <<< guarda para PDF
 
     if (info) info.textContent = regs.length ? `${regs.length} registro(s)` : 'Sem registros no período.';
 
@@ -129,6 +142,76 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   }
+
+  // ===== exportar PDF (se button + libs existirem) =====
+  function exportarPDF() {
+    const jspdfNS = window.jspdf || {};
+    const jsPDF = jspdfNS.jsPDF || window.jsPDF;
+    if (!jsPDF || !window.jspdf?.jsPDF) {
+      alert('Biblioteca de PDF não encontrada. Inclua jsPDF e autoTable no HTML.');
+      return;
+    }
+
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const margem = 40;
+
+    // Título e período
+    const titulo = (nome ? `Histórico — ${nome}` : 'Histórico do Reservatório');
+    const periodo =
+      (fromI?.value ? `De ${fromI.value.replace('T',' ')} ` : '') +
+      (toI?.value   ? `até ${toI.value.replace('T',' ')}`   : '');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text(titulo, margem, 40);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    if (periodo.trim()) doc.text(periodo, margem, 58);
+
+    // Montar linhas a partir de lastRegs
+    const rows = lastRegs.map(r => {
+      const dt = new Date(r.recorded_at);
+      const data = dt.toLocaleDateString('pt-BR');
+      const hora = dt.toLocaleTimeString('pt-BR', { hour12: false });
+      const nivel = Number(r.nivel_percent) || 0;
+      const litros = Math.round(nivel * vol / 100);
+      const temp = Number(r.temperatura_c);
+      return [
+        `${data} ${hora}`,
+        `${nivel.toFixed(1)}%`,
+        `${litros.toLocaleString()} L`,
+        isFinite(temp) ? `${temp.toFixed(1)} °C` : '--',
+        String(r.ph)
+      ];
+    });
+
+    const head = [['Data/Hora', 'Nível (%)', 'Litragem Atual (L)', 'Temperatura (°C)', 'pH']];
+
+    if (typeof doc.autoTable !== 'function') {
+      alert('autoTable não carregado. Adicione o plugin jsPDF-AutoTable.');
+      return;
+    }
+
+    doc.autoTable({
+      startY: 72,
+      head,
+      body: rows,
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [55, 65, 81] },
+      margin: { left: margem, right: margem },
+      theme: 'grid'
+    });
+
+    const end = doc.lastAutoTable ? doc.lastAutoTable.finalY : 72;
+    doc.setFontSize(9);
+    doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, margem, end + 24);
+
+    const safeNome = (nome || 'reservatorio').replace(/[^\w\-]+/g, '_');
+    doc.save(`historico_${safeNome}_${fromI.value.replace('T','-')}_ate_${toI.value.replace('T','-')}.pdf`);
+  }
+
+  if (btnPDF) btnPDF.addEventListener('click', exportarPDF);
 
   // submit do filtro (se houver formulário)
   if (form && (fromI || toI)) {

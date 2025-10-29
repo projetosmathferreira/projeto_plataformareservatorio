@@ -24,18 +24,25 @@ const publicDir = path.resolve(__dirname, "./public");
 app.use(express.static(publicDir));
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // ...?sslmode=require
+  connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
 
-const JWT_SECRET   = process.env.JWT_SECRET;
-const ADMIN_EMAIL  = process.env.ADMIN_EMAIL || "emailespecialadmin@central.com";
+const JWT_SECRET  = process.env.JWT_SECRET;
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "emailespecialadmin@central.com";
 
-// ======== AUTH ======== //
+// ========= helpers =========
+function adminOnly(req, res, next) {
+  if (!req.user?.email || req.user.email !== ADMIN_EMAIL) {
+    return res.status(403).json({ error: "apenas admin" });
+  }
+  next();
+}
+
+// ========= AUTH =========
 app.post("/auth/login", async (req, res) => {
   const { email, senha } = req.body;
-  if (!email || !senha)
-    return res.status(400).json({ error: "email e senha obrigatórios" });
+  if (!email || !senha) return res.status(400).json({ error: "email e senha obrigatórios" });
 
   try {
     const r = await pool.query(
@@ -47,11 +54,7 @@ app.post("/auth/login", async (req, res) => {
     if (!ok) return res.status(401).json({ error: "senha incorreta" });
 
     const isAdmin = r.rows[0].email === ADMIN_EMAIL;
-    const token = jwt.sign(
-      { id: r.rows[0].id, email: r.rows[0].email, isAdmin },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = jwt.sign({ id: r.rows[0].id, email: r.rows[0].email, isAdmin }, JWT_SECRET, { expiresIn: "7d" });
     res.json({ token });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -69,12 +72,25 @@ function auth(req, res, next) {
   }
 }
 
-// ======== RESERVATÓRIOS ======== //
+// útil para o front (opcional)
+app.get("/auth/me", auth, async (req, res) => {
+  res.json({ id: req.user.id, email: req.user.email, isAdmin: req.user.email === ADMIN_EMAIL });
+});
+
+// ========= RESERVATÓRIOS (por role) =========
 app.get("/reservatorios", auth, async (req, res) => {
   try {
+    const q = await pool.query("SELECT role_id FROM clientes WHERE id=$1", [req.user.id]);
+    const roleId = q.rows[0]?.role_id || null;
+
+    if (!roleId) return res.json({ reservatorios: [] });
+
     const r = await pool.query(
-      "SELECT id, nome, volume_l FROM reservatorios WHERE cliente_id=$1 ORDER BY id",
-      [req.user.id]
+      `SELECT id, nome, volume_l
+       FROM reservatorios
+       WHERE role_id = $1
+       ORDER BY id`,
+      [roleId]
     );
     res.json({ reservatorios: r.rows });
   } catch (e) {
@@ -82,12 +98,12 @@ app.get("/reservatorios", auth, async (req, res) => {
   }
 });
 
-// **NOVO**: últimos N registros (default 5) — usado no dashboard 2.0
+// últimos N para dashboard
 app.get("/reservatorios/:id/ultimos", auth, async (req, res) => {
   try {
     const rid = Number(req.params.id);
     const own = await pool.query(
-      "SELECT 1 FROM reservatorios WHERE id=$1 AND cliente_id=$2",
+      "SELECT 1 FROM reservatorios r JOIN clientes c ON c.role_id = r.role_id WHERE r.id=$1 AND c.id=$2",
       [rid, req.user.id]
     );
     if (!own.rowCount) return res.status(403).json({ error: "reservatório não autorizado" });
@@ -107,27 +123,23 @@ app.get("/reservatorios/:id/ultimos", auth, async (req, res) => {
   }
 });
 
-// REGISTROS (com filtro opcional de período) — usado na página histórico
+// histórico com período (inputs datetime-local em hora local)
 app.get("/reservatorios/:id/registros", auth, async (req, res) => {
   try {
     const rid = Number(req.params.id) || 0;
     const own = await pool.query(
-      "SELECT 1 FROM reservatorios WHERE id=$1 AND cliente_id=$2",
+      "SELECT 1 FROM reservatorios r JOIN clientes c ON c.role_id = r.role_id WHERE r.id=$1 AND c.id=$2",
       [rid, req.user.id]
     );
     if (!own.rowCount) return res.status(403).json({ error: "reservatório não autorizado" });
 
-    // períodos vindos do <input type="datetime-local"> (hora LOCAL, sem TZ)
-    const from = (req.query.from || "").trim(); // "YYYY-MM-DDTHH:mm"
+    const from = (req.query.from || "").trim();
     const to   = (req.query.to   || "").trim();
-
     const haveRange = !!(from || to);
     const limitQ = haveRange
       ? Math.min(Math.max(parseInt(req.query.limit || "500", 10), 1), 2000)
       : 10;
 
-    // Converte local->APP_TZ->timestamptz
-    // “to” INCLUSIVO: < (to + 1 minuto)
     let sql = `
       SELECT id, reservatorio_id, nivel_percent, temperatura_c, ph, recorded_at
       FROM registros
@@ -157,77 +169,80 @@ app.get("/reservatorios/:id/registros", auth, async (req, res) => {
   }
 });
 
-// ====================================================================================================
-// =============== ADMIN (extra) ===============
-function escapeIdent(str = "") { return String(str).replace(/[^a-zA-Z0-9_]/g, ""); }
-function escapeLiteral(str = "") { return String(str).replace(/'/g, "''"); }
+// ========= ADMIN =========
 
-// middleware: somente admin
-function adminOnly(req, res, next) {
-  if (!req.user?.email || req.user.email !== ADMIN_EMAIL) {
-    return res.status(403).json({ error: "apenas admin" });
-  }
-  next();
-}
-
-// Verifica acesso do admin
+// ping de admin
 app.get("/admin/check", auth, adminOnly, (_req, res) => {
   res.json({ ok: true });
 });
 
-// Criar cliente + ROLE (ESP)
+// criar cliente (SEM criar role automaticamente) — role_id é opcional
 app.post("/admin/clientes", auth, adminOnly, async (req, res) => {
-  const { nome, email, senha, dbPassword } = req.body || {};
+  const { nome, email, senha, role_id } = req.body || {};
   if (!nome || !email || !senha) return res.status(400).json({ error: "nome, email, senha" });
 
-  const c = await pool.connect();
   try {
-    await c.query("BEGIN");
-
-    // cria placeholder
-    const ins = await c.query(
-      "INSERT INTO clientes (nome, email, db_role, password_hash) VALUES ($1,$2,$3,$4) RETURNING id",
-      [nome, email, "to_be_set", "to_be_set"]
+    const hash = await bcrypt.hash(senha, 10);
+    const r = await pool.query(
+      `INSERT INTO clientes (nome, email, password_hash, role_id)
+       VALUES ($1,$2,$3,$4)
+       RETURNING id, nome, email, role_id`,
+      [nome, email, hash, Number.isInteger(role_id) ? role_id : null]
     );
-    const id = ins.rows[0].id;
-
-    // cria role de banco (DDL não aceita placeholders)
-    const roleName  = `client_${id}`;
-    const roleIdent = escapeIdent(roleName);
-    const dbPwd     = dbPassword || senha;
-    await c.query(`CREATE ROLE ${roleIdent} WITH LOGIN PASSWORD '${escapeLiteral(dbPwd)}'`);
-
-    // hash para login web
-    const webHash = await bcrypt.hash(senha, 10);
-
-    await c.query("UPDATE clientes SET db_role=$1, password_hash=$2 WHERE id=$3",
-      [roleName, webHash, id]
-    );
-
-    await c.query("COMMIT");
-    res.json({ id, roleName, webPassword: senha, dbPassword: dbPwd });
+    res.json({ cliente: r.rows[0] });
   } catch (e) {
-    await c.query("ROLLBACK");
     res.status(500).json({ error: e.message });
-  } finally {
-    c.release();
   }
 });
 
-// Criar reservatório (owner_role herdado do cliente)
-app.post("/admin/reservatorios", auth, adminOnly, async (req, res) => {
-  const { cliente_id, nome, volume_l } = req.body || {};
-  if (!cliente_id || !nome || !volume_l) {
-    return res.status(400).json({ error: "cliente_id, nome, volume_l" });
-  }
+// editar cliente (nome, email, role_id opcional / null reseta)
+app.patch("/admin/clientes/:id", auth, adminOnly, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { nome, email, role_id } = req.body || {};
+  const sets = [];
+  const params = [];
+  let i = 1;
 
+  if (typeof nome === 'string')  { sets.push(`nome=$${i++}`);  params.push(nome); }
+  if (typeof email === 'string') { sets.push(`email=$${i++}`); params.push(email); }
+  if (role_id === null)          { sets.push(`role_id=NULL`); }
+  else if (Number.isInteger(role_id)) { sets.push(`role_id=$${i++}`); params.push(role_id); }
+
+  if (!sets.length) return res.json({ ok: true, unchanged: true });
+
+  params.push(id);
   try {
-    const q = await pool.query("SELECT db_role FROM clientes WHERE id=$1", [cliente_id]);
-    if (!q.rowCount) return res.status(404).json({ error: "cliente não encontrado" });
+    const r = await pool.query(`UPDATE clientes SET ${sets.join(', ')} WHERE id=$${i} RETURNING id`, params);
+    if (!r.rowCount) return res.status(404).json({ error: "não encontrado" });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
+// excluir cliente (não mexe em reservatórios, pois agora são por role)
+app.delete("/admin/clientes/:id", auth, adminOnly, async (req, res) => {
+  try {
+    const r = await pool.query("DELETE FROM clientes WHERE id=$1 RETURNING id", [req.params.id]);
+    if (!r.rowCount) return res.status(404).json({ error: "não encontrado" });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// criar reservatório (agora exige role_id no body)
+app.post("/admin/reservatorios", auth, adminOnly, async (req, res) => {
+  const { role_id, nome, volume_l } = req.body || {};
+  if (!role_id || !nome || !volume_l) {
+    return res.status(400).json({ error: "role_id, nome, volume_l" });
+  }
+  try {
     const r = await pool.query(
-      "INSERT INTO reservatorios (cliente_id, nome, volume_l, owner_role) VALUES ($1,$2,$3,$4) RETURNING *",
-      [cliente_id, nome, volume_l, q.rows[0].db_role]
+      `INSERT INTO reservatorios (role_id, nome, volume_l)
+       VALUES ($1,$2,$3)
+       RETURNING id, role_id, nome, volume_l, created_at`,
+      [role_id, nome, volume_l]
     );
     res.json({ reservatorio: r.rows[0] });
   } catch (e) {
@@ -235,7 +250,31 @@ app.post("/admin/reservatorios", auth, adminOnly, async (req, res) => {
   }
 });
 
-// Excluir reservatório
+// editar reservatório (nome, volume_l, role_id)
+app.patch("/admin/reservatorios/:id", auth, adminOnly, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { nome, volume_l, role_id } = req.body || {};
+  const sets = [];
+  const params = [];
+  let i = 1;
+
+  if (typeof nome === 'string')       { sets.push(`nome=$${i++}`);      params.push(nome); }
+  if (Number.isFinite(volume_l))      { sets.push(`volume_l=$${i++}`);  params.push(volume_l); }
+  if (Number.isInteger(role_id))      { sets.push(`role_id=$${i++}`);   params.push(role_id); }
+
+  if (!sets.length) return res.json({ ok: true, unchanged: true });
+
+  params.push(id);
+  try {
+    const r = await pool.query(`UPDATE reservatorios SET ${sets.join(', ')} WHERE id=$${i} RETURNING id`, params);
+    if (!r.rowCount) return res.status(404).json({ error: "não encontrado" });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// excluir reservatório
 app.delete("/admin/reservatorios/:id", auth, adminOnly, async (req, res) => {
   try {
     const r = await pool.query("DELETE FROM reservatorios WHERE id=$1 RETURNING id", [req.params.id]);
@@ -246,167 +285,116 @@ app.delete("/admin/reservatorios/:id", auth, adminOnly, async (req, res) => {
   }
 });
 
-// Excluir cliente (requer FKs com ON DELETE CASCADE para reservatórios/registros)
-app.delete("/admin/clientes/:id", auth, adminOnly, async (req, res) => {
-  const id = Number(req.params.id);
-  const c = await pool.connect();
+// ===== ROLES =====
+// criar role
+app.post("/admin/roles", auth, adminOnly, async (req, res) => {
+  const { nome } = req.body || {};
+  if (!nome || !nome.trim()) return res.status(400).json({ error: "nome obrigatório" });
   try {
-    await c.query("BEGIN");
+    const r = await pool.query(
+      "INSERT INTO client_roles (nome) VALUES ($1) RETURNING id, nome",
+      [nome.trim()]
+    );
+    res.json({ role: r.rows[0] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-    const del = await c.query("DELETE FROM clientes WHERE id=$1 RETURNING db_role", [id]);
-    if (!del.rowCount) {
-      await c.query("ROLLBACK");
-      return res.status(404).json({ error: "não encontrado" });
-    }
-
-    const roleIdent = escapeIdent(del.rows[0].db_role || "");
-    if (roleIdent) {
-      await c.query(`DO $$
-      BEGIN
-        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${escapeLiteral(roleIdent)}') THEN
-          EXECUTE format('REASSIGN OWNED BY %I TO CURRENT_USER', '${roleIdent}');
-          EXECUTE format('DROP OWNED BY %I', '${roleIdent}');
-          EXECUTE format('DROP ROLE %I', '${roleIdent}');
-        END IF;
-      END $$;`);
-    }
-
-    await c.query("COMMIT");
+// editar role (nome)
+app.patch("/admin/roles/:id", auth, adminOnly, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { nome } = req.body || {};
+  if (!nome || !nome.trim()) return res.status(400).json({ error: "nome obrigatório" });
+  try {
+    const r = await pool.query(
+      "UPDATE client_roles SET nome=$1 WHERE id=$2 RETURNING id",
+      [nome.trim(), id]
+    );
+    if (!r.rowCount) return res.status(404).json({ error: "não encontrado" });
     res.json({ ok: true });
   } catch (e) {
-    await c.query("ROLLBACK");
     res.status(500).json({ error: e.message });
-  } finally {
-    c.release();
   }
 });
 
-
-
-
-// Atualizar cliente (nome, email, db_role)
-app.patch("/admin/clientes/:id", auth, adminOnly, async (req, res) => {
+// remover role (atenção a FKs)
+app.delete("/admin/roles/:id", auth, adminOnly, async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    const { nome, email, db_role } = req.body || {};
-
-    const campos = [];
-    const valores = [];
-    let i = 1;
-
-    if (nome) { campos.push(`nome=$${i++}`); valores.push(nome); }
-    if (email) { campos.push(`email=$${i++}`); valores.push(email); }
-    if (db_role) { campos.push(`db_role=$${i++}`); valores.push(db_role); }
-
-    if (!campos.length) return res.status(400).json({ error: "nenhum campo para atualizar" });
-
-    const sql = `UPDATE clientes SET ${campos.join(", ")} WHERE id=$${i} RETURNING *`;
-    valores.push(id);
-
-    const r = await pool.query(sql, valores);
-    if (!r.rowCount) return res.status(404).json({ error: "cliente não encontrado" });
-
-    res.json({ ok: true, cliente: r.rows[0] });
+    const r = await pool.query("DELETE FROM client_roles WHERE id=$1 RETURNING id", [req.params.id]);
+    if (!r.rowCount) return res.status(404).json({ error: "não encontrado" });
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// Atualizar reservatório (nome, volume_l)
-app.patch("/admin/reservatorios/:id", auth, adminOnly, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const { nome, volume_l } = req.body || {};
-
-    const campos = [];
-    const valores = [];
-    let i = 1;
-
-    if (nome) { campos.push(`nome=$${i++}`); valores.push(nome); }
-    if (volume_l) { campos.push(`volume_l=$${i++}`); valores.push(volume_l); }
-
-    if (!campos.length) return res.status(400).json({ error: "nenhum campo para atualizar" });
-
-    const sql = `UPDATE reservatorios SET ${campos.join(", ")} WHERE id=$${i} RETURNING *`;
-    valores.push(id);
-
-    const r = await pool.query(sql, valores);
-    if (!r.rowCount) return res.status(404).json({ error: "reservatório não encontrado" });
-
-    res.json({ ok: true, reservatorio: r.rows[0] });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-
-
-
-
-
-
-
-
-// Overview com filtros/busca
+// ===== Overview unificado (clientes + reservatórios + roles) =====
 app.get("/admin/overview", auth, adminOnly, async (req, res) => {
   const qStr = (req.query.q || "").toString().trim();
-  const clienteId = parseInt(req.query.cliente_id || "0", 10);
-  const limit = Math.min(Math.max(parseInt(req.query.limit || "100", 10), 1), 500);
+  const limit = Math.min(Math.max(parseInt(req.query.limit || "200", 10), 1), 500);
 
   try {
     // clientes
-    let sqlC = "SELECT id, nome, email, db_role, created_at FROM clientes";
+    let sqlC = `
+      SELECT c.id, c.nome, c.email, c.role_id, c.created_at, cr.nome AS role_name
+      FROM clientes c
+      LEFT JOIN client_roles cr ON cr.id = c.role_id
+    `;
     const pC = [];
-    if (qStr) {
-      sqlC += " WHERE (nome ILIKE $1 OR email ILIKE $1 OR db_role ILIKE $1)";
-      pC.push(`%${qStr}%`);
-    }
-    sqlC += " ORDER BY id DESC LIMIT " + limit;
+    const condC = [];
+    if (qStr) condC.push(`(c.nome ILIKE $${pC.push('%'+qStr+'%')} OR c.email ILIKE $${pC.push('%'+qStr+'%')} OR cr.nome ILIKE $${pC.push('%'+qStr+'%')})`);
+    if (condC.length) sqlC += " WHERE " + condC.join(" AND ");
+    sqlC += " ORDER BY c.id DESC LIMIT " + limit;
     const clientes = (await pool.query(sqlC, pC)).rows;
 
-    // --- Reservatórios: 
-let sqlR = `
-  SELECT
-    r.id,
-    r.cliente_id,
-    r.nome,
-    r.volume_l,
-    r.created_at,
-    c.db_role AS cliente_role        
-  FROM reservatorios r
-  JOIN clientes c ON c.id = r.cliente_id
-`;
-const pR = [];
-const cond = [];
-if (clienteId) cond.push(`r.cliente_id = $${pR.push(clienteId)}`);
-if (qStr) cond.push(`(r.nome ILIKE $${pR.push('%'+qStr+'%')} OR c.db_role ILIKE $${pR.push('%'+qStr+'%')})`);
-if (cond.length) sqlR += " WHERE " + cond.join(" AND ");
-sqlR += " ORDER BY r.id DESC LIMIT " + limit;
+    // reservatórios
+    let sqlR = `
+      SELECT r.id, r.role_id, r.nome, r.volume_l, r.created_at, cr.nome AS role_name
+      FROM reservatorios r
+      LEFT JOIN client_roles cr ON cr.id = r.role_id
+    `;
+    const pR = [];
+    const condR = [];
+    if (qStr) condR.push(`(r.nome ILIKE $${pR.push('%'+qStr+'%')} OR cr.nome ILIKE $${pR.push('%'+qStr+'%')})`);
+    if (condR.length) sqlR += " WHERE " + condR.join(" AND ");
+    sqlR += " ORDER BY r.id DESC LIMIT " + limit;
+    const reservatorios = (await pool.query(sqlR, pR)).rows;
 
-const reservatorios = (await pool.query(sqlR, pR)).rows;
+    // roles
+    let sqlRole = `SELECT id, nome FROM client_roles`;
+const pRole = [];
+const condRole = [];
+if (qStr) {
+  condRole.push(`nome ILIKE $${pRole.push('%' + qStr + '%')}`);
+  if (/^\d+$/.test(qStr)) {
+    condRole.push(`id = $${pRole.push(parseInt(qStr, 10))}`);
+  }
+}
+if (condRole.length) sqlRole += " WHERE " + condRole.join(" OR ");
+sqlRole += ` ORDER BY id DESC LIMIT ${limit}`;
+const roles = (await pool.query(sqlRole, pRole)).rows;
 
-
-    res.json({ clientes, reservatorios });
+    res.json({ clientes, reservatorios, roles });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// ======== SSE (tempo real) ======== //
+// ========= SSE =========
 const clients = new Set();
 
-app.get("/stream", async (req, res) => {
-  const token = req.query.token;
-  if (!token) return res.status(401).end();
-
+app.get("/stream", auth, async (req, res) => {
   try {
-    const user = jwt.verify(token, JWT_SECRET);
+    const q = await pool.query("SELECT role_id FROM clientes WHERE id=$1", [req.user.id]);
+    const roleId = q.rows[0]?.role_id || null;
+
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
     });
-    const client = { id: user.id, res };
+    const client = { id: req.user.id, role_id: roleId, res };
     clients.add(client);
     req.on("close", () => clients.delete(client));
   } catch {
@@ -422,20 +410,20 @@ const listenClient = new Client({
 await listenClient.connect();
 await listenClient.query("LISTEN registros_channel");
 
+// msg.payload esperado: { reservatorio_id, registro:{...} }
 listenClient.on("notification", async (msg) => {
   try {
-    const payload = JSON.parse(msg.payload); // { reservatorio_id, registro:{...} }
-    const { reservatorio_id } = payload;
+    const payload = JSON.parse(msg.payload);
+    const rid = payload?.reservatorio_id;
+    if (!rid) return;
 
-    const resOwn = await pool.query(
-      "SELECT cliente_id FROM reservatorios WHERE id=$1",
-      [reservatorio_id]
-    );
-    if (!resOwn.rows.length) return;
-    const clienteId = resOwn.rows[0].cliente_id;
+    // role do reservatório
+    const r = await pool.query("SELECT role_id FROM reservatorios WHERE id=$1", [rid]);
+    const roleId = r.rows[0]?.role_id || null;
+    if (roleId == null) return;
 
     for (const c of clients) {
-      if (c.id === clienteId) {
+      if (c.role_id === roleId) {
         c.res.write(`data: ${JSON.stringify(payload)}\n\n`);
       }
     }

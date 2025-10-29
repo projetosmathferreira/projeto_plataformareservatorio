@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Admin</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 text-gray-900">
@@ -13,81 +13,128 @@
     <button id="logout" class="bg-red-600 hover:bg-red-500 px-3 py-1 rounded text-sm">Sair</button>
   </header>
 
-  <main class="max-w-6xl mx-auto p-4 space-y-6" id="adminWrap">
+  <main class="max-w-6xl mx-auto p-4 space-y-6">
 
-    <!-- Criar cliente -->
-    <section class="bg-white p-4 rounded shadow">
-      <h2 class="font-semibold mb-3">Criar cliente</h2>
-      <form id="fCliente" class="flex flex-wrap gap-2 items-end">
-        <input id="cNome"  class="border rounded px-2 py-1 w-44" placeholder="Nome">
-        <input id="cEmail" class="border rounded px-2 py-1 w-60" placeholder="Email">
-        <input id="cSenha" class="border rounded px-2 py-1 w-44" placeholder="Senha" type="password">
-        <button class="bg-blue-600 text-white px-3 py-1 rounded">Criar</button>
-      </form>
-      <pre id="outCliente" class="text-xs mt-2 whitespace-pre-wrap"></pre>
-    </section>
+    
+<section class="space-y-4 mb-6">
+  <!-- Criar cliente -->
+  <div class="bg-white p-4 rounded shadow">
+    <h2 class="font-semibold mb-2">Criar cliente</h2>
+    <form id="fCliente" class="flex flex-wrap gap-2 items-end">
+      <input class="border rounded px-2 py-1" placeholder="Nome" id="cNome">
+      <input class="border rounded px-2 py-1" placeholder="Email" id="cEmail">
+      <input class="border rounded px-2 py-1" placeholder="Senha" id="cSenha" type="password">
+      <input class="border rounded px-2 py-1" placeholder="Role ID (opcional)" id="cRoleId" type="number">
+      <button class="bg-green-600 text-white px-8 py-1 rounded">Criar</button>
+    </form>
+    <pre id="outCliente" class="text-xs mt-2"></pre>
+  </div>
 
-    <!-- Criar reservatório -->
-    <section class="bg-white p-4 rounded shadow">
-      <h2 class="font-semibold mb-3">Criar reservatório</h2>
-      <form id="fReserv" class="flex flex-wrap gap-2 items-end">
-        <input id="rCid"  class="border rounded px-2 py-1 w-36" placeholder="Cliente ID" type="number">
-        <input id="rNome" class="border rounded px-2 py-1 w-60" placeholder="Nome">
-        <input id="rVol"  class="border rounded px-2 py-1 w-36" placeholder="Volume (L)" type="number">
-        <button class="bg-blue-600 text-white px-3 py-1 rounded">Criar</button>
-      </form>
-      <pre id="outReserv" class="text-xs mt-2 whitespace-pre-wrap"></pre>
-    </section>
+  <!-- Criar reservatório -->
+  <div class="bg-white p-4 rounded shadow">
+    <h2 class="font-semibold mb-2">Criar reservatório</h2>
+    <form id="fReserv" class="flex flex-wrap gap-2 items-end">
+      <input class="border rounded px-2 py-1" placeholder="Nome do reservatório" id="rNome">
+      <input class="border rounded px-2 py-1" placeholder="Volume (L)" id="rVol" type="number">
+      <input class="border rounded px-2 py-1" placeholder="Role ID" id="rRoleId" type="number" required>
+      <button class="bg-green-600 text-white px-8 py-1 rounded">Criar</button>
+    </form>
+    <pre id="outReserv" class="text-xs mt-2"></pre>
+  </div>
 
-    <!-- Filtros / Busca -->
+  <!-- Criar role -->
+  <div class="bg-white p-4 rounded shadow">
+    <h2 class="font-semibold mb-2">Criar role</h2>
+    <form id="fRole" class="flex flex-wrap gap-2 items-end">
+      <input class="border rounded px-2 py-1" placeholder="Nome do role (ex: empresa_x)" id="roleNome">
+      <button class="bg-green-600 text-white px-8 py-1 rounded">Criar</button>
+    </form>
+    <pre id="outRole" class="text-xs mt-2"></pre>
+  </div>
+</section>
+
+    <!-- CONSULTAS: CLIENTES -->
     <section class="bg-white p-4 rounded shadow">
-      <h2 class="font-semibold mb-3">Filtros</h2>
-      <div class="flex flex-wrap gap-2 items-end">
-        <input id="filtroQ" class="border rounded px-2 py-1 w-64" placeholder="Buscar por nome/email/role/reservatório">
-        <input id="filtroClienteId" class="border rounded px-2 py-1 w-36" placeholder="Cliente ID">
-        <button id="btnBuscar" class="bg-slate-700 text-white px-3 py-1 rounded">Buscar/Atualizar</button>
-        <span id="msg" class="text-sm text-gray-600"></span>
+      <div class="flex flex-wrap items-end gap-2 mb-3">
+        <div class="grow">
+          <label class="block text-xs text-gray-500">Filtro (nome/email/role)</label>
+          <input id="filtroQClientes" class="border rounded px-2 py-1 w-full" placeholder="Buscar clientes...">
+        </div>
+        <button id="btnBuscarClientes" class="bg-gray-800 text-white px-3 py-1 rounded">Buscar</button>
       </div>
-    </section>
 
-    <!-- Tabelas -->
-    <section class="bg-white p-4 rounded shadow">
-      <h3 class="font-semibold mb-2">Clientes</h3>
-      <div class="overflow-x-auto">
+      <div class="overflow-auto">
         <table class="w-full text-sm border">
           <thead class="bg-gray-200">
             <tr>
               <th class="border p-2">ID</th>
               <th class="border p-2">Nome</th>
               <th class="border p-2">Email</th>
-              <th class="border p-2">Role</th>
+              <th class="border p-2">Role ID</th>
               <th class="border p-2">Criado em</th>
-              <th class="border p-2">Ações</th>
+              <th class="border p-2 w-36">Ações</th>
             </tr>
           </thead>
           <tbody id="tbodyClientes"></tbody>
         </table>
       </div>
+       <p id="msgCLIENT" class="text-xs mt-2 text-gray-600"></p>
     </section>
 
+    <!-- CONSULTAS: RESERVATÓRIOS -->
     <section class="bg-white p-4 rounded shadow">
-      <h3 class="font-semibold mb-2">Reservatórios</h3>
-      <div class="overflow-x-auto">
+      <div class="flex flex-wrap items-end gap-2 mb-3">
+        <div class="grow">
+          <label class="block text-xs text-gray-500">Filtro (nome/role/cliente)</label>
+          <input id="filtroQReservs" class="border rounded px-2 py-1 w-full" placeholder="Buscar reservatórios...">
+        </div>
+        <button id="btnBuscarReservs" class="bg-gray-800 text-white px-3 py-1 rounded">Buscar</button>
+      </div>
+
+      <div class="overflow-auto">
         <table class="w-full text-sm border">
           <thead class="bg-gray-200">
             <tr>
               <th class="border p-2">ID</th>
-              <th class="border p-2">Cliente</th>
+              <th class="border p-2">Role ID</th>
               <th class="border p-2">Nome</th>
               <th class="border p-2">Volume (L)</th>
               <th class="border p-2">Criado em</th>
-              <th class="border p-2">Ações</th>
+              <th class="border p-2 w-36">Ações</th>
             </tr>
           </thead>
           <tbody id="tbodyReserv"></tbody>
         </table>
       </div>
+       <p id="msgRESERV" class="text-xs mt-2 text-gray-600"></p>
     </section>
+
+    <!-- CONSULTAS: ROLES -->
+    <section class="bg-white p-4 rounded shadow">
+      <div class="flex flex-wrap items-end gap-2 mb-3">
+        <div class="grow">
+          <label class="block text-xs text-gray-500">Filtro (id,nome)</label>
+          <input id="filtroQRoles" class="border rounded px-2 py-1 w-full" placeholder="Buscar roles...">
+        </div>
+        <button id="btnBuscarRoles" class="bg-gray-800 text-white px-3 py-1 rounded">Buscar</button>
+      </div>
+
+      <div class="overflow-auto">
+        <table class="w-full text-sm border">
+          <thead class="bg-gray-200">
+            <tr>
+              <th class="border p-2">ID</th>
+              <th class="border p-2">Nome</th>
+              <th class="border p-2 w-36">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyRoles"></tbody>
+        </table>
+      </div>
+      <p id="msgROLES" class="text-xs mt-2 text-gray-600"></p>
+    </section>
+
+    
   </main>
 
   <script src="admin.js"></script>

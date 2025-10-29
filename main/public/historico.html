@@ -33,9 +33,13 @@
           <label class="block text-xs text-gray-600 mb-1">Até</label>
           <input type="datetime-local" id="to" class="w-full border rounded px-2 py-2 text-sm" />
         </div>
-        <div class="sm:col-span-2 lg:col-span-1">
+        <div class="sm:col-span-2 lg:col-span-1 flex gap-2">
           <button class="w-full lg:w-auto bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">
             Aplicar
+          </button>
+          <!-- NOVO: botão para exportar PDF -->
+          <button type="button" id="btnPDF" class="w-full lg:w-auto bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm">
+            Baixar PDF
           </button>
         </div>
       </form>
@@ -43,31 +47,35 @@
 
     <!-- Tabela: wrapper com scroll horizontal no mobile -->
     <div class="bg-white p-4 pl-8 pr-8  rounded shadow">
-  <!-- MOBILE: cards (sem scroll lateral) -->
-  <div id="cards" class="space-y-4 md:hidden"></div>
+      <!-- MOBILE: cards (sem scroll lateral) -->
+      <div id="cards" class="space-y-4 md:hidden"></div>
 
-  <!-- DESKTOP: tabela -->
-  <div class="hidden md:block">
-    <div class="overflow-x-auto">
-      <table class="min-w-[720px] w-full text-sm border" id="tabela">
-        <thead class="bg-gray-200 text-center text-gray-800 sticky top-0">
-          <tr>
-            <th class="border p-2 text-center w-48">Data/Hora</th>
-            <th class="border p-2 text-center">Nível (%)</th>
-            <th class="border p-2 text-center">Litragem Atual (L)</th>
-            <th class="border p-2 text-center">Temperatura (°C)</th>
-            <th class="border p-2 text-center">pH</th>
-          </tr>
-        </thead>
-        <tbody id="tbody" class="[&>tr:nth-child(even)]:bg-gray-50"></tbody>
-      </table>
+      <!-- DESKTOP: tabela -->
+      <div class="hidden md:block">
+        <div class="overflow-x-auto">
+          <table class="min-w-[720px] w-full text-sm border" id="tabela">
+            <thead class="bg-gray-200 text-center text-gray-800 sticky top-0">
+              <tr>
+                <th class="border p-2 text-center w-48">Data/Hora</th>
+                <th class="border p-2 text-center">Nível (%)</th>
+                <th class="border p-2 text-center">Litragem Atual (L)</th>
+                <th class="border p-2 text-center">Temperatura (°C)</th>
+                <th class="border p-2 text-center">pH</th>
+              </tr>
+            </thead>
+            <tbody id="tbody" class="[&>tr:nth-child(even)]:bg-gray-50"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="info" class="text-xs md:text-sm text-gray-600 mt-2"></div>
     </div>
-  </div>
-
-  <div id="info" class="text-xs md:text-sm text-gray-600 mt-2"></div>
-</div>
 
   </main>
+
+  <!-- NOVO: libs para exportar PDF -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 
   <script src="historico.js"></script>
 </body>

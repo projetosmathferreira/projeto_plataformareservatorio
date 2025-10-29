@@ -17,13 +17,15 @@ function jwtPayload(tk){
     return JSON.parse(atob(p));
   }catch{ return null; }
 }
-(function revealAdminLink() {
+(async function revealAdminLink() {
   const el = document.getElementById('adminLink');
   if (!el) return;
-  const payload = jwtPayload(token || '');
-  if (payload?.isAdmin) el.classList.remove('hidden');
-  else el.remove();
+  try {
+    const r = await fetch('/admin/check', { headers: { Authorization: 'Bearer ' + localStorage.getItem('token') } });
+    if (r.ok) el.classList.remove('hidden'); else el.remove();
+  } catch { el.remove(); }
 })();
+
 
 // ====== LOADING OVERLAY (apenas visual) ======
 function createLoadingOverlay() {

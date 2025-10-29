@@ -41,284 +41,324 @@ async function isAdmin() {
 // ==== elementos ====
 const outCliente = $('outCliente');
 const outReserv  = $('outReserv');
-const msg        = $('msg');
+const outRole    = $('outRole');
+const msgCLIENT        = $('msgCLIENT');
+const msgRESERV     = $('msgRESERV');
+const msgROLES        = $('msgROLES');
 
+// Tabelas
 const tbodyClientes = $('tbodyClientes');
 const tbodyReserv   = $('tbodyReserv');
+const tbodyRoles    = $('tbodyRoles');
 
-const filtroQ   = $('filtroQ');
-const filtroCid = $('filtroClienteId');
-const btnBuscar = $('btnBuscar');
+// Filtros independentes
+const filtroQClientes   = $('filtroQClientes');
+const btnBuscarClientes = $('btnBuscarClientes');
 
-// ===== criar cliente =====
+const filtroQReservs    = $('filtroQReservs');
+const btnBuscarReservs  = $('btnBuscarReservs');
+
+const filtroQRoles      = $('filtroQRoles');
+const btnBuscarRoles    = $('btnBuscarRoles');
+
+// ===== criar cliente (Role ID opcional) =====
 $('fCliente').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const nome  = $('cNome').value.trim();
-  const email = $('cEmail').value.trim();
-  const senha = $('cSenha').value.trim();
+  const nome   = $('cNome').value.trim();
+  const email  = $('cEmail').value.trim();
+  const senha  = $('cSenha').value.trim();
+  const roleId = parseInt(($('cRoleId').value || '').trim(), 10);
+
   if (!nome || !email || !senha) {
     outCliente.textContent = 'Preencha nome, email e senha.';
     return;
   }
+
+  const payload = { nome, email, senha };
+  if (Number.isInteger(roleId) && roleId > 0) payload.role_id = roleId;
+
   try {
-    const r = await api('/admin/clientes', {
-      method: 'POST',
-      body: JSON.stringify({ nome, email, senha }),
-    });
+    const r = await api('/admin/clientes', { method: 'POST', body: JSON.stringify(payload) });
     outCliente.textContent = JSON.stringify(r, null, 2);
     e.target.reset();
-    buscar();
+    buscarClientes();
   } catch (er) {
     outCliente.textContent = er.message;
   }
 });
 
-// ===== criar reservatório =====
+// ===== criar reservatório (exige Role ID) =====
 $('fReserv').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const cliente_id = parseInt($('rCid').value, 10);
-  const nome       = $('rNome').value.trim();
-  const volume_l   = parseInt($('rVol').value, 10);
-  if (!cliente_id || !nome || !volume_l) {
-    outReserv.textContent = 'Preencha cliente_id, nome e volume.';
+  const role_id  = parseInt(($('rRoleId').value || '').trim(), 10);
+  const nome     = $('rNome').value.trim();
+  const volume_l = parseInt(($('rVol').value || '').trim(), 10);
+
+  if (!role_id || role_id <= 0 || !nome || !volume_l) {
+    outReserv.textContent = 'Preencha role_id, nome e volume.';
     return;
   }
+
   try {
-    const r = await api('/admin/reservatorios', {
-      method: 'POST',
-      body: JSON.stringify({ cliente_id, nome, volume_l }),
-    });
+    const r = await api('/admin/reservatorios', { method: 'POST', body: JSON.stringify({ role_id, nome, volume_l }) });
     outReserv.textContent = JSON.stringify(r, null, 2);
     e.target.reset();
-    buscar();
+    buscarReservatorios();
   } catch (er) {
     outReserv.textContent = er.message;
+  }
+});
+
+// ===== criar role =====
+$('fRole').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const nome = $('roleNome').value.trim();
+  if (!nome) { outRole.textContent = 'Informe o nome do role.'; return; }
+  try {
+    const r = await api('/admin/roles', { method: 'POST', body: JSON.stringify({ nome }) });
+    outRole.textContent = JSON.stringify(r, null, 2);
+    e.target.reset();
+    buscarRoles();
+    
+  } catch (er) {
+    outRole.textContent = er.message;
   }
 });
 
 // ===== deletes =====
 async function delCliente(id) {
   if (!confirm(`Excluir cliente ${id}? Isto removerá também reservatórios/registros (FK).`)) return;
-  try {
-    await api('/admin/clientes/' + id, { method: 'DELETE' });
-    buscar();
-  } catch (e) {
-    alert(e.message);
-  }
+  try { await api('/admin/clientes/' + id, { method: 'DELETE' }); buscarClientes();}
+  catch (e) { alert(e.message); }
 }
-
 async function delReserv(id) {
   if (!confirm(`Excluir reservatório ${id}?`)) return;
-  try {
-    await api('/admin/reservatorios/' + id, { method: 'DELETE' });
-    buscar();
-  } catch (e) {
-    alert(e.message);
-  }
+  try { await api('/admin/reservatorios/' + id, { method: 'DELETE' }); buscarReservatorios();}
+  catch (e) { alert(e.message); }
+}
+async function delRole(id) {
+  if (!confirm(`Excluir role ${id}?`)) return;
+  try { await api('/admin/roles/' + id, { method: 'DELETE' }); buscarRoles();}
+  catch (e) { alert(e.message); }
 }
 
-// ===== helpers para edição inline =====
-function minimalInput(value, type = 'text', extraClass = '') {
-  const el = document.createElement('input');
-  el.type = type;
-  el.value = value ?? '';
-  el.className = `w-full px-2 py-1 border rounded text-sm focus:outline-none focus:ring focus:ring-blue-200 ${extraClass}`;
-  return el;
-}
-function setRowBusy(tr, on) {
-  tr.style.opacity = on ? '0.6' : '1';
-  tr.querySelectorAll('button').forEach(b => b.disabled = !!on);
+// ===== edição inline util =====
+function inputify(td, value, type='text', placeholder='') {
+  const i = document.createElement('input');
+  i.type = type;
+  i.value = value ?? '';
+  i.placeholder = placeholder || '';
+  i.className = 'w-full border rounded px-2 py-1 text-sm';
+  td.innerHTML = '';
+  td.appendChild(i);
+  return i;
 }
 
-// ===== overview + filtros =====
-btnBuscar.addEventListener('click', (e) => {
-  e.preventDefault();
-  buscar();
-});
-
-// === render com Editar/Salvar (CLIENTES) — agora com db_role editável ===
+// ===== renderização =====
 function renderClientes(list = []) {
   tbodyClientes.innerHTML = '';
   for (const c of list) {
     const tr = document.createElement('tr');
-    tr.dataset.id = c.id;
-
     tr.innerHTML = `
       <td class="border p-2">${c.id}</td>
       <td class="border p-2" data-k="nome">${c.nome}</td>
       <td class="border p-2" data-k="email">${c.email}</td>
-      <td class="border p-2" data-k="db_role">${c.db_role}</td>
+       <td class="border p-2" data-k="role_id">${c.role_id}</td>
       <td class="border p-2">${new Date(c.created_at).toLocaleString()}</td>
       <td class="border p-2 text-center space-x-1">
-        <button class="px-2 py-1 text-white bg-amber-600 hover:bg-amber-500 rounded text-xs" data-action="edit">Editar</button>
-        <button class="px-2 py-1 text-white bg-red-600 hover:bg-red-500 rounded text-xs"   data-action="del">Excluir</button>
+        <button class="px-2 py-1 text-white bg-amber-600 hover:bg-amber-500 rounded text-xs" data-act="edit">Editar</button>
+        <button class="px-2 py-1 text-white bg-red-600 hover:bg-red-500 rounded text-xs"   data-act="del">Excluir</button>
       </td>
     `;
+    const btnEdit = tr.querySelector('[data-act="edit"]');
+    const btnDel  = tr.querySelector('[data-act="del"]');
 
-    const btnEdit = tr.querySelector('[data-action="edit"]');
-    const btnDel  = tr.querySelector('[data-action="del"]');
-
-    btnDel.onclick = () => delCliente(c.id);
+    let editing = false;
+    let nomeI, emailI, roleIdI;
 
     btnEdit.onclick = async () => {
-      const editing = tr.dataset.editing === '1';
-      const nomeTd  = tr.querySelector('td[data-k="nome"]');
-      const emailTd = tr.querySelector('td[data-k="email"]');
-      const roleTd  = tr.querySelector('td[data-k="db_role"]');
-
       if (!editing) {
-        // entrar em edição
-        tr.dataset.editing = '1';
+        // entra em edição
+        const tdNome  = tr.querySelector('td[data-k="nome"]');
+        const tdEmail = tr.querySelector('td[data-k="email"]');
+        const tdRole  = tr.querySelector('td[data-k="role_id"]');
+        nomeI  = inputify(tdNome,  c.nome);
+        emailI = inputify(tdEmail, c.email, 'email');
+        // role: campo numérico (ID). Placeholder com nome atual se houver
+        roleIdI = inputify(tdRole, c.role_id || '', 'number', c.role_name || 'role_id');
         btnEdit.textContent = 'Salvar';
+        editing = true;
+        return;
+      }
+      // salvar
+      try {
+        const payload = {};
+        const nome  = nomeI.value.trim();
+        const email = emailI.value.trim();
+        const rid   = roleIdI.value.trim();
+        if (nome && nome !== c.nome) payload.nome = nome;
+        if (email && email !== c.email) payload.email = email;
+        if (rid === '') payload.role_id = null;
+        else if (/^\d+$/.test(rid)) payload.role_id = parseInt(rid, 10);
 
-        nomeTd._input  = minimalInput(nomeTd.textContent.trim(), 'text');
-        emailTd._input = minimalInput(emailTd.textContent.trim(), 'email');
-        roleTd._input  = minimalInput(roleTd.textContent.trim(), 'text', 'uppercase');
-
-        nomeTd.innerHTML = '';
-        emailTd.innerHTML = '';
-        roleTd.innerHTML = '';
-        nomeTd.appendChild(nomeTd._input);
-        emailTd.appendChild(emailTd._input);
-        roleTd.appendChild(roleTd._input);
-      } else {
-        // salvar
-        const id = parseInt(tr.dataset.id, 10);
-        const payload = {
-          nome:   (nomeTd._input?.value || '').trim(),
-          email:  (emailTd._input?.value || '').trim(),
-          db_role:(roleTd._input?.value || '').trim(),
-        };
-        // validações simples
-        if (!payload.nome || !payload.email) {
-          alert('Preencha nome e email válidos.');
-          return;
+        if (Object.keys(payload).length) {
+          await api('/admin/clientes/' + c.id, { method: 'PATCH', body: JSON.stringify(payload) });
         }
-        if (!/^[A-Za-z0-9_]+$/.test(payload.db_role)) {
-          alert('db_role deve conter apenas letras, números e underscore (_).');
-          return;
-        }
-
-        setRowBusy(tr, true);
-        try {
-          await api('/admin/clientes/' + id, {
-            method: 'PATCH',
-            body: JSON.stringify(payload),
-          });
-          // volta para visual
-          nomeTd.textContent  = payload.nome;
-          emailTd.textContent = payload.email;
-          roleTd.textContent  = payload.db_role;
-          tr.dataset.editing = '0';
-          btnEdit.textContent = 'Editar';
-        } catch (e) {
-          alert(e.message);
-        } finally {
-          setRowBusy(tr, false);
-        }
+        await buscarClientes();
+      } catch (e) {
+        alert(e.message);
       }
     };
 
+    btnDel.onclick = () => delCliente(c.id);
     tbodyClientes.appendChild(tr);
   }
 }
 
-// === render com Editar/Salvar (RESERVATÓRIOS) ===
 function renderReservatorios(list = []) {
   tbodyReserv.innerHTML = '';
   for (const r of list) {
     const tr = document.createElement('tr');
-    tr.dataset.id = r.id;
-
     tr.innerHTML = `
       <td class="border p-2">${r.id}</td>
-      <td class="border p-2">${r.cliente_role}</td>
+      <td class="border p-2" data-k="role_id">${r.role_id}</td>
       <td class="border p-2" data-k="nome">${r.nome}</td>
-      <td class="border p-2 text-right" data-k="volume_l">${r.volume_l}</td>
+      <td class="border p-2" data-k="volume_l">${r.volume_l}</td>
       <td class="border p-2">${new Date(r.created_at).toLocaleString()}</td>
       <td class="border p-2 text-center space-x-1">
-        <button class="px-2 py-1 text-white bg-amber-600 hover:bg-amber-500 rounded text-xs" data-action="edit">Editar</button>
-        <button class="px-2 py-1 text-white bg-red-600 hover:bg-red-500 rounded text-xs"   data-action="del">Excluir</button>
+        <button class="px-2 py-1 text-white bg-amber-600 hover:bg-amber-500 rounded text-xs" data-act="edit">Editar</button>
+        <button class="px-2 py-1 text-white bg-red-600 hover:bg-red-500 rounded text-xs"   data-act="del">Excluir</button>
       </td>
     `;
+    const btnEdit = tr.querySelector('[data-act="edit"]');
+    const btnDel  = tr.querySelector('[data-act="del"]');
 
-    const btnEdit = tr.querySelector('[data-action="edit"]');
-    const btnDel  = tr.querySelector('[data-action="del"]');
-
-    btnDel.onclick = () => delReserv(r.id);
+    let editing = false;
+    let roleI, nomeI, volI;
 
     btnEdit.onclick = async () => {
-      const editing = tr.dataset.editing === '1';
-      const nomeTd = tr.querySelector('td[data-k="nome"]');
-      const volTd  = tr.querySelector('td[data-k="volume_l"]');
-
       if (!editing) {
-        // entrar em edição
-        tr.dataset.editing = '1';
+        roleI = inputify(tr.querySelector('td[data-k="role_id"]'), r.role_id || '', 'number', r.role_name || 'role_id');
+        nomeI = inputify(tr.querySelector('td[data-k="nome"]'),    r.nome);
+        volI  = inputify(tr.querySelector('td[data-k="volume_l"]'), r.volume_l, 'number');
         btnEdit.textContent = 'Salvar';
+        editing = true;
+        return;
+      }
+      try {
+        const payload = {};
+        const rid = roleI.value.trim();
+        const nm  = nomeI.value.trim();
+        const vl  = volI.value.trim();
 
-        nomeTd._input = minimalInput(nomeTd.textContent.trim(), 'text');
-        volTd._input  = minimalInput(String(volTd.textContent.trim()), 'number', 'text-right');
+        if (/^\d+$/.test(rid) && parseInt(rid,10) !== r.role_id) payload.role_id = parseInt(rid,10);
+        if (nm && nm !== r.nome) payload.nome = nm;
+        if (/^\d+$/.test(vl) && parseInt(vl,10) !== r.volume_l) payload.volume_l = parseInt(vl,10);
 
-        nomeTd.innerHTML = '';
-        volTd.innerHTML  = '';
-        nomeTd.appendChild(nomeTd._input);
-        volTd.appendChild(volTd._input);
-      } else {
-        // salvar
-        const id = parseInt(tr.dataset.id, 10);
-        const payload = {
-          nome: (nomeTd._input?.value || '').trim(),
-          volume_l: parseInt(volTd._input?.value || '0', 10) || 0,
-        };
-        if (!payload.nome || !payload.volume_l) {
-          alert('Preencha nome e volume válidos.');
-          return;
+        if (Object.keys(payload).length) {
+          await api('/admin/reservatorios/' + r.id, { method: 'PATCH', body: JSON.stringify(payload) });
         }
+        
+        await buscarReservatorios();
 
-        setRowBusy(tr, true);
-        try {
-          await api('/admin/reservatorios/' + id, {
-            method: 'PATCH',
-            body: JSON.stringify(payload),
-          });
-          // volta para visual
-          nomeTd.textContent = payload.nome;
-          volTd.textContent  = payload.volume_l;
-          tr.dataset.editing = '0';
-          btnEdit.textContent = 'Editar';
-        } catch (e) {
-          alert(e.message);
-        } finally {
-          setRowBusy(tr, false);
-        }
+      } catch (e) {
+        alert(e.message);
       }
     };
 
+    btnDel.onclick = () => delReserv(r.id);
     tbodyReserv.appendChild(tr);
   }
 }
 
-async function buscar() {
-  try {
-    msg.textContent = 'Carregando...';
-    const q   = (filtroQ.value || '').trim();
-    const cid = parseInt(filtroCid.value || '0', 10) || '';
-    const data = await api(`/admin/overview?q=${encodeURIComponent(q)}&cliente_id=${cid}`);
-    renderClientes(data.clientes);
-    renderReservatorios(data.reservatorios);
-    msg.textContent = `${data.clientes.length} cliente(s), ${data.reservatorios.length} reservatório(s)`;
-  } catch (e) {
-    msg.textContent = e.message;
+function renderRoles(list = []) {
+  tbodyRoles.innerHTML = '';
+  for (const rr of list) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="border p-2">${rr.id}</td>
+      <td class="border p-2" data-k="nome">${rr.nome}</td>
+      <td class="border p-2 text-center space-x-1">
+        <button class="px-2 py-1 text-white bg-amber-600 hover:bg-amber-500 rounded text-xs" data-act="edit">Editar</button>
+        <button class="px-2 py-1 text-white bg-red-600 hover:bg-red-500 rounded text-xs"   data-act="del">Excluir</button>
+      </td>
+    `;
+    const btnEdit = tr.querySelector('[data-act="edit"]');
+    const btnDel  = tr.querySelector('[data-act="del"]');
+
+    let editing = false;
+    let nomeI;
+
+    btnEdit.onclick = async () => {
+      if (!editing) {
+        nomeI = inputify(tr.querySelector('td[data-k="nome"]'), rr.nome);
+        btnEdit.textContent = 'Salvar';
+        editing = true;
+        return;
+      }
+      try {
+        const nm = nomeI.value.trim();
+        if (nm && nm !== rr.nome) {
+          await api('/admin/roles/' + rr.id, { method: 'PATCH', body: JSON.stringify({ nome: nm }) });
+        }
+        await buscarClientes();
+        await buscarReservatorios();
+        await buscarRoles();
+      } catch (e) {
+        alert(e.message);
+      }
+    };
+
+    btnDel.onclick = () => delRole(rr.id);
+    tbodyRoles.appendChild(tr);
   }
 }
+
+// ===== buscas independentes =====
+async function buscarClientes() {
+  try {
+    msgCLIENT.textContent = 'Carregando clientes...';
+    const q = (filtroQClientes.value || '').trim();
+    const data = await api(`/admin/overview?q=${encodeURIComponent(q)}&limit=200`);
+    renderClientes(data.clientes || []);
+    msgCLIENT.textContent = '';
+  } catch (e) {
+    msgCLIENT.textContent = e.message;
+  }
+}
+async function buscarReservatorios() {
+  try {
+    msgRESERV.textContent = 'Carregando reservatórios...';
+    const q = (filtroQReservs.value || '').trim();
+    const data = await api(`/admin/overview?q=${encodeURIComponent(q)}&limit=200`);
+    renderReservatorios(data.reservatorios || []);
+    msgRESERV.textContent = '';
+  } catch (e) {
+    msgRESERV.textContent = e.message;
+  }
+}
+async function buscarRoles() {
+  try {
+    msgROLES.textContent = 'Carregando roles...';
+    const q = (filtroQRoles.value || '').trim();
+    const data = await api(`/admin/overview?q=${encodeURIComponent(q)}&limit=200`);
+    renderRoles(data.roles || []);
+    msgROLES.textContent = '';
+  } catch (e) {
+    msgROLES.textContent = e.message;
+  }
+}
+
+
+
+// eventos de filtro
+btnBuscarClientes.addEventListener('click', (e) => { e.preventDefault(); buscarClientes(); });
+btnBuscarReservs .addEventListener('click', (e) => { e.preventDefault(); buscarReservatorios(); });
+btnBuscarRoles   .addEventListener('click', (e) => { e.preventDefault(); buscarRoles(); });
 
 // ==== start: só inicia se for admin ====
 (async function start() {
   const ok = await isAdmin();
-  if (!ok) {
-    location.replace('dashboard.html');
-    return;
-  }
-  buscar();
+  if (!ok) { location.replace('dashboard.html'); return; }
+  await Promise.all([buscarClientes(), buscarReservatorios(), buscarRoles()]);
 })();
