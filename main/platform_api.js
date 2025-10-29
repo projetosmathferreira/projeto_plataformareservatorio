@@ -29,7 +29,7 @@ const pool = new Pool({
 });
 
 const JWT_SECRET  = process.env.JWT_SECRET;
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "emailespecialadmin@central.com";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 
 // ========= helpers =========
 function adminOnly(req, res, next) {
@@ -432,6 +432,6 @@ listenClient.on("notification", async (msg) => {
   }
 });
 
-app.listen(process.env.PORT || 4000, () =>
-  console.log("API online na porta", process.env.PORT || 4000)
+app.listen(process.env.PORT, () =>
+  console.log("API online na porta", process.env.PORT)
 );
