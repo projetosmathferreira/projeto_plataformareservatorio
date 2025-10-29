@@ -51,23 +51,20 @@ function prepareCanvas(canvas) {
   return { ctx, W: rect.width, H: rect.height };
 }
 
-// ====== Tanque simples, ocupando toda a largura da div, COM MARCAS À ESQUERDA ======
-// ====== Tanque ajustado: altura exata até a linha de 100% ======
+// ====== Tanque ======
 function drawTank(canvas, pct) {
   const { ctx, W, H } = prepareCanvas(canvas);
 
-  // geometria
   const labelPad = 24;
   const gutter   = 16;
   const r        = Math.min(16, W * 0.08);
-  const top      = 4;               // encosta na linha 100%
+  const top      = 4;
   const bottom   = H - r / 2;
   const left     = gutter + labelPad;
   const right    = W - gutter;
 
   ctx.clearRect(0, 0, W, H);
 
-  // paredes do tanque (U aberto)
   function tankWallsPath() {
     ctx.beginPath();
     ctx.moveTo(right, top - r);
@@ -78,7 +75,6 @@ function drawTank(canvas, pct) {
     ctx.lineTo(left, top - r);
   }
 
-  // path fechado p/ clip do líquido
   function tankClipPath() {
     ctx.beginPath();
     ctx.moveTo(left + r, top - r);
@@ -93,27 +89,24 @@ function drawTank(canvas, pct) {
     ctx.closePath();
   }
 
-  // paredes
   ctx.strokeStyle = "#111827";
   ctx.lineWidth = 1.8;
   tankWallsPath();
   ctx.stroke();
 
-  // nível e preenchimento
   const lvl = Math.max(0, Math.min(100, Number(pct) || 0));
   const fillTop = bottom - (lvl / 100) * (bottom - top);
 
   ctx.save();
   tankClipPath();
   ctx.clip();
-  
+
   const grad = ctx.createLinearGradient(0, fillTop, 0, bottom);
   grad.addColorStop(0, "rgba(59,130,246,0.88)");
   grad.addColorStop(1, "rgba(59,130,246,0.55)");
   ctx.fillStyle = grad;
   ctx.fillRect(left, fillTop, right - left, bottom - fillTop);
 
-  // ondinha do topo do líquido
   const capH = Math.max(5, Math.min(12, (bottom - fillTop) * 0.07));
   ctx.beginPath();
   ctx.moveTo(left + 2, fillTop + capH);
@@ -126,11 +119,9 @@ function drawTank(canvas, pct) {
 
   ctx.restore();
 
-  // reforça paredes
   tankWallsPath();
   ctx.stroke();
 
-  // === LINHAS-GUIA ===
   const marks = [25, 50, 75, 100];
   ctx.font = "11px system-ui, -apple-system, Segoe UI, Roboto, Arial";
   ctx.textAlign = "right";
@@ -147,7 +138,6 @@ function drawTank(canvas, pct) {
     ctx.fillText(`${p}%`, left - 10, y);
   });
 
-  // porcentagem central
   ctx.fillStyle = "#111827";
   ctx.font = "bold 13px system-ui, -apple-system, Segoe UI, Roboto, Arial";
   ctx.textAlign = "center";
@@ -175,7 +165,7 @@ function animateTank(canvas, from, to, done) {
   canvas._raf = requestAnimationFrame(frame);
 }
 
-// ====== Card (tanque ocupa 100% da área dele) ======
+// ====== Card ======
 function createReservatorioCard(r) {
   const section = document.createElement('section');
   section.className = 'bg-white rounded-lg shadow p-3 border border-gray-200';
@@ -191,17 +181,11 @@ function createReservatorioCard(r) {
         <button class="px-2 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs" data-action="off">Desligar</button>
       </div>
     </div>
-
-    <!-- Grid: tanque largo ocupa uma coluna inteira; direita empilha em telas pequenas -->
     <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 items-stretch">
-      <!-- TANQUE: canvas ocupa 100% da DIV -->
       <div class="rounded border bg-white p-2 pr-14 pl-14 md:pr-20 md:pl-20 flex items-center">
-        <canvas id="tank-${r.id}" class="w-full  h-44 md:h-56"></canvas>
+        <canvas id="tank-${r.id}" class="w-full h-44 md:h-56"></canvas>
       </div>
-
-      <!-- Direita (2 colunas em md+) -->
       <div class="md:col-span-2 flex flex-col gap-2">
-        <!-- Barra litros -->
         <div class="rounded border bg-gray-50 p-2">
           <div class="flex justify-between text-[12px] text-gray-600 mb-1">
             <span>Litragem atual / total</span>
@@ -211,8 +195,6 @@ function createReservatorioCard(r) {
             <div id="litrosBar-${r.id}" class="h-2 bg-green-600" style="width:0%"></div>
           </div>
         </div>
-
-        <!-- Temp/PH -->
         <div class="grid grid-cols-2 gap-2">
           <div class="rounded border bg-gray-50 p-2 text-center">
             <div class="text-[11px] text-gray-500">Temperatura</div>
@@ -223,19 +205,12 @@ function createReservatorioCard(r) {
             <div id="ph-${r.id}" class="text-lg font-semibold text-gray-800 mt-0.5">--.-</div>
           </div>
         </div>
-
-        <!-- Últimas -->
         <div class="rounded border bg-gray-50 p-2">
           <div class="text-[11px] mb-1 text-gray-600">Últimos registros</div>
-          <ul id="list-${r.id}" class="text-[12px] max-h-24  space-y-0.5"></ul>
+          <ul id="list-${r.id}" class="text-[12px] max-h-24 space-y-0.5"></ul>
         </div>
-
-        <!-- Botão -->
         <div class="mt-1 flex justify-end">
-          <a
-            href="historico.html?rid=${r.id}&nome=${encodeURIComponent(r.nome)}&vol=${r.volume_l}"
-            class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded shadow"
-          >
+          <a href="historico.html?rid=${r.id}&nome=${encodeURIComponent(r.nome)}&vol=${r.volume_l}" class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded shadow">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h16v2H4V6zm0 5h10v2H4v-2zm0 5h16v2H4v-2z"/></svg>
             Visualizar histórico
           </a>
@@ -243,45 +218,57 @@ function createReservatorioCard(r) {
       </div>
     </div>
   `;
-
   section.querySelector('[data-action="on"]').onclick = () => alert('Ligar (placeholder)');
   section.querySelector('[data-action="off"]').onclick = () => alert('Desligar (placeholder)');
-
   containers.appendChild(section);
   return section;
 }
 
-// ====== SSE ======
+// ====== SSE corrigido ======
 function startSSE() {
-  const evt = new EventSource(`/stream?token=${token}`);
+  const API_BASE = window.API_BASE || '';
+  let backoff = 1000;
+  const maxBackoff = 15000;
 
-  evt.onmessage = (ev) => {
-    const d = JSON.parse(ev.data);
-    const card = [...containers.children].find(el => Number(el.dataset.reservatorioId) === d.reservatorio_id);
-    if (!card) return;
+  const connect = () => {
+    const es = new EventSource(`${API_BASE}/stream?token=${token}`);
 
-    const { listEl, tempEl, phEl, canvas, volume, litrosTxt, litrosBar } = card._refs;
-    const { registro } = d;
+    es.onmessage = (ev) => {
+      if (!ev.data || ev.data.startsWith(':')) return; // ignora ping
+      let d;
+      try { d = JSON.parse(ev.data); } catch { return; }
 
-    const pct = Number(registro.nivel_percent) || 0;
-    const litrosAtuais = Math.round((pct) * volume / 100);
+      const card = [...containers.children].find(el => Number(el.dataset.reservatorioId) === d.reservatorio_id);
+      if (!card) return;
 
-    tempEl.textContent = `${Number(registro.temperatura_c).toFixed(1)} °C`;
-    phEl.textContent = `${registro.ph}`;
+      const { listEl, tempEl, phEl, canvas, volume, litrosTxt, litrosBar } = card._refs;
+      const { registro } = d;
+      if (!registro) return;
 
-    const li = document.createElement('li');
-    li.textContent = `-> ${new Date(registro.recorded_at).toLocaleString()} • ${pct.toFixed(1)}% (${litrosAtuais} L) • ${Number(registro.temperatura_c).toFixed(1)}°C • pH ${registro.ph}`;
-    listEl.prepend(li);
-    while (listEl.children.length > 24) listEl.removeChild(listEl.lastChild);
+      const pct = Number(registro.nivel_percent) || 0;
+      const litrosAtuais = Math.round(pct * volume / 100);
+      tempEl.textContent = `${Number(registro.temperatura_c).toFixed(1)} °C`;
+      phEl.textContent = `${registro.ph}`;
+      const li = document.createElement('li');
+      li.textContent = `-> ${new Date(registro.recorded_at).toLocaleString()} • ${pct.toFixed(1)}% (${litrosAtuais} L) • ${Number(registro.temperatura_c).toFixed(1)}°C • pH ${registro.ph}`;
+      listEl.prepend(li);
+      while (listEl.children.length > 24) listEl.removeChild(listEl.lastChild);
 
-    litrosTxt.innerHTML = `<span class="text-gray-900 font-semibold">${litrosAtuais} L</span> <span class="text-gray-500">/ ${volume} L</span>`;
-    litrosBar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      litrosTxt.innerHTML = `<span class="text-gray-900 font-semibold">${litrosAtuais} L</span> <span class="text-gray-500">/ ${volume} L</span>`;
+      litrosBar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      const from = Number(canvas._level ?? 0);
+      animateTank(canvas, from, pct, v => canvas._level = v);
+    };
 
-    const from = Number(canvas._level ?? 0);
-    animateTank(canvas, from, pct, v => canvas._level = v);
+    es.addEventListener('hello', () => { backoff = 1000; });
+    es.onerror = () => {
+      es.close();
+      setTimeout(connect, backoff);
+      backoff = Math.min(backoff * 2, maxBackoff);
+      console.warn('SSE desconectado; tentando reconectar…');
+    };
   };
-
-  evt.onerror = () => console.warn('SSE desconectado; tentando reconectar…');
+  connect();
 }
 
 // ====== Carga inicial ======
@@ -294,36 +281,23 @@ async function init() {
       return;
     }
     const j = await res.json();
-
     containers.innerHTML = '';
-    if (!j.reservatorios || !j.reservatorios.length) {
-      vazio.classList.remove('hidden'); return;
-    }
+    if (!j.reservatorios || !j.reservatorios.length) { vazio.classList.remove('hidden'); return; }
     vazio.classList.add('hidden');
-
     const cards = [];
-
     for (const r of j.reservatorios) {
       const card = createReservatorioCard(r);
-
-      const listEl    = card.querySelector(`#list-${r.id}`);
-      const tempEl    = card.querySelector(`#temp-${r.id}`);
-      const phEl      = card.querySelector(`#ph-${r.id}`);
-      const canvas    = card.querySelector(`#tank-${r.id}`);
+      const listEl = card.querySelector(`#list-${r.id}`);
+      const tempEl = card.querySelector(`#temp-${r.id}`);
+      const phEl = card.querySelector(`#ph-${r.id}`);
+      const canvas = card.querySelector(`#tank-${r.id}`);
       const litrosTxt = card.querySelector(`#litrosTxt-${r.id}`);
       const litrosBar = card.querySelector(`#litrosBar-${r.id}`);
-
-      // desenha em 0% do tamanho atual da div
       canvas._level = drawTank(canvas, 0);
-
-      // carrega últimos
-      const r2 = await fetch(`/reservatorios/${r.id}/ultimos?limit=5`, {
-        headers: { Authorization: 'Bearer ' + token }
-      });
+      const r2 = await fetch(`/reservatorios/${r.id}/ultimos?limit=5`, { headers: { Authorization: 'Bearer ' + token } });
       if (r2.ok) {
         const j2 = await r2.json();
         const regs = j2.registros || [];
-
         regs.slice().reverse().forEach(reg => {
           const pct = Number(reg.nivel_percent) || 0;
           const litros = Math.round(pct * r.volume_l / 100);
@@ -331,7 +305,6 @@ async function init() {
           li.textContent = `-> ${new Date(reg.recorded_at).toLocaleString()} • ${pct.toFixed(1)}% (${litros} L) • ${Number(reg.temperatura_c).toFixed(1)}°C • pH ${reg.ph}`;
           listEl.prepend(li);
         });
-
         if (regs.length) {
           const last = regs[0];
           const pct = Number(last.nivel_percent) || 0;
@@ -349,20 +322,12 @@ async function init() {
         const t = await r2.text();
         listEl.innerHTML = `<li class="text-red-600 text-[12px]">Falha ao carregar últimos: ${r2.status} ${t}</li>`;
       }
-
-      // guardar refs p/ SSE e redimensionamento
       card._refs = { listEl, tempEl, phEl, canvas, volume: r.volume_l, litrosTxt, litrosBar };
       cards.push(card);
     }
-
-    // Re-desenha os canvases quando a janela for redimensionada
     window.addEventListener('resize', () => {
-      for (const c of cards) {
-        const lvl = Number(c._refs.canvas._level || 0);
-        drawTank(c._refs.canvas, lvl);
-      }
+      for (const c of cards) drawTank(c._refs.canvas, Number(c._refs.canvas._level || 0));
     }, { passive: true });
-
     startSSE();
   } catch {
     containers.innerHTML = '<div class="text-center text-sm text-red-600">Falha ao carregar reservatórios (erro de rede).</div>';

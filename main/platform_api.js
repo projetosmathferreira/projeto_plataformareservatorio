@@ -258,9 +258,9 @@ app.patch("/admin/reservatorios/:id", auth, adminOnly, async (req, res) => {
   const params = [];
   let i = 1;
 
-  if (typeof nome === 'string')       { sets.push(`nome=$${i++}`);      params.push(nome); }
-  if (Number.isFinite(volume_l))      { sets.push(`volume_l=$${i++}`);  params.push(volume_l); }
-  if (Number.isInteger(role_id))      { sets.push(`role_id=$${i++}`);   params.push(role_id); }
+  if (typeof nome === 'string')  { sets.push(`nome=$${i++}`);     params.push(nome); }
+  if (Number.isFinite(volume_l)) { sets.push(`volume_l=$${i++}`); params.push(volume_l); }
+  if (Number.isInteger(role_id)) { sets.push(`role_id=$${i++}`);  params.push(role_id); }
 
   if (!sets.length) return res.json({ ok: true, unchanged: true });
 
@@ -361,19 +361,19 @@ app.get("/admin/overview", auth, adminOnly, async (req, res) => {
     sqlR += " ORDER BY r.id DESC LIMIT " + limit;
     const reservatorios = (await pool.query(sqlR, pR)).rows;
 
-    // roles
+    // roles (filtro por nome OU id numérico)
     let sqlRole = `SELECT id, nome FROM client_roles`;
-const pRole = [];
-const condRole = [];
-if (qStr) {
-  condRole.push(`nome ILIKE $${pRole.push('%' + qStr + '%')}`);
-  if (/^\d+$/.test(qStr)) {
-    condRole.push(`id = $${pRole.push(parseInt(qStr, 10))}`);
-  }
-}
-if (condRole.length) sqlRole += " WHERE " + condRole.join(" OR ");
-sqlRole += ` ORDER BY id DESC LIMIT ${limit}`;
-const roles = (await pool.query(sqlRole, pRole)).rows;
+    const pRole = [];
+    const condRole = [];
+    if (qStr) {
+      condRole.push(`nome ILIKE $${pRole.push('%' + qStr + '%')}`);
+      if (/^\d+$/.test(qStr)) {
+        condRole.push(`id = $${pRole.push(parseInt(qStr, 10))}`);
+      }
+    }
+    if (condRole.length) sqlRole += " WHERE " + condRole.join(" OR ");
+    sqlRole += ` ORDER BY id DESC LIMIT ${limit}`;
+    const roles = (await pool.query(sqlRole, pRole)).rows;
 
     res.json({ clientes, reservatorios, roles });
   } catch (e) {
@@ -382,27 +382,47 @@ const roles = (await pool.query(sqlRole, pRole)).rows;
 });
 
 // ========= SSE =========
-const clients = new Set();
 
-app.get("/stream", auth, async (req, res) => {
+// ======== SSE (tempo real) ======== //
+const clients = new Set(); // Set global compartilhado
+const FRONT_ORIGIN = process.env.FRONT_ORIGIN || '*'; // se front e API forem domínios diferentes, informe a origem
+
+app.get("/stream", async (req, res) => {
+  const token = req.query.token;
+  if (!token) return res.status(401).end();
+
+  // Headers corretos p/ SSE atrás de proxies e local
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.setHeader("Access-Control-Allow-Origin", FRONT_ORIGIN);
+
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
   try {
-    const q = await pool.query("SELECT role_id FROM clientes WHERE id=$1", [req.user.id]);
-    const roleId = q.rows[0]?.role_id || null;
+    const user = jwt.verify(token, JWT_SECRET);
+    const client = { id: user.id, res };
 
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    });
-    const client = { id: req.user.id, role_id: roleId, res };
+    // Heartbeat p/ manter conexão viva (25s)
+    client._hb = setInterval(() => {
+      try { res.write(`: ping ${Date.now()}\n\n`); } catch {}
+    }, 25000);
+
+    // Sinal de conexão OK
+    res.write(`event: hello\ndata: "ok"\n\n`);
+
     clients.add(client);
-    req.on("close", () => clients.delete(client));
+    req.on("close", () => {
+      clearInterval(client._hb);
+      clients.delete(client);
+    });
   } catch {
-    res.status(401).end();
+    return res.status(401).end();
   }
 });
 
-// LISTEN/NOTIFY
+// LISTEN/NOTIFY (apenas UMA conexão e UM handler)
 const listenClient = new Client({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -410,20 +430,24 @@ const listenClient = new Client({
 await listenClient.connect();
 await listenClient.query("LISTEN registros_channel");
 
-// msg.payload esperado: { reservatorio_id, registro:{...} }
 listenClient.on("notification", async (msg) => {
   try {
-    const payload = JSON.parse(msg.payload);
-    const rid = payload?.reservatorio_id;
-    if (!rid) return;
+    const payload = JSON.parse(msg.payload); // { reservatorio_id, registro:{...} }
+    const { reservatorio_id } = payload;
 
-    // role do reservatório
-    const r = await pool.query("SELECT role_id FROM reservatorios WHERE id=$1", [rid]);
-    const roleId = r.rows[0]?.role_id || null;
-    if (roleId == null) return;
+    // Mapeia todos os clientes que têm acesso a esse reservatório via role_id
+    const resOwn = await pool.query(
+      `SELECT c.id AS cliente_id
+         FROM reservatorios r
+         JOIN clientes c ON c.role_id = r.role_id
+        WHERE r.id = $1`,
+      [reservatorio_id]
+    );
+    if (!resOwn.rowCount) return;
 
+    const allowedIds = new Set(resOwn.rows.map(x => x.cliente_id));
     for (const c of clients) {
-      if (c.role_id === roleId) {
+      if (allowedIds.has(c.id)) {
         c.res.write(`data: ${JSON.stringify(payload)}\n\n`);
       }
     }
