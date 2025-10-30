@@ -7,10 +7,29 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 text-gray-900">
-  <header class="p-4 bg-gray-900 text-white flex justify-between items-center">
-    <a href="dashboard.html" class="underline text-sm">&larr; Dashboard</a>
-    <h1 class="text-lg font-semibold">Admin</h1>
-    <button id="logout" class="bg-red-600 hover:bg-red-500 px-3 py-1 rounded text-sm">Sair</button>
+  <header class="p-4 bg-gray-900 text-white flex justify-between items-center sticky top-0 z-10 shadow">
+    <a href="dashboard.html" class="underline text-xs md:text-sm whitespace-nowrap">&larr; Voltar</a>
+
+    <!-- Bloco do usuário -->
+    <div class="relative">
+      <!-- Botão de usuário -->
+      <button id="userMenuBtn" class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded text-sm focus:outline-none">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-300" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+        </svg>
+        <span id="userName" class="text-gray-100 font-medium truncate max-w-[140px]">Usuário</span>
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
+      </button>
+
+      <!-- Dropdown -->
+      <div id="userDropdown" class="absolute right-0 mt-2 w-40 bg-white text-gray-800 rounded shadow-lg hidden">
+        <button id="logout" class="block w-full text-left px-4 py-2 text-sm rounded hover:bg-gray-100 ">
+          Sair
+        </button>
+      </div>
+    </div>
   </header>
 
   <main class="max-w-6xl mx-auto p-4 space-y-6">
@@ -136,6 +155,42 @@
 
     
   </main>
+
+  <script>
+    // ==== Dropdown toggle ====
+    const userBtn = document.getElementById('userMenuBtn');
+    const userDropdown = document.getElementById('userDropdown');
+    userBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const visible = !userDropdown.classList.contains('hidden');
+      document.querySelectorAll('#userDropdown').forEach(el => el.classList.add('hidden'));
+      if (!visible) {
+        userDropdown.classList.remove('hidden', 'dropdown-enter');
+        void userDropdown.offsetWidth;
+        userDropdown.classList.add('dropdown-enter-active');
+        setTimeout(() => userDropdown.classList.remove('dropdown-enter', 'dropdown-enter-active'), 150);
+      } else userDropdown.classList.add('hidden');
+    });
+
+    // fecha dropdown clicando fora
+    document.addEventListener('click', (e) => {
+      if (!userDropdown.contains(e.target) && !userBtn.contains(e.target)) {
+        userDropdown.classList.add('hidden');
+      }
+    });
+
+    // ==== Nome do usuário no topo ====
+    (async function fetchUserInfo() {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      try {
+        const r = await fetch('/auth/me', { headers: { Authorization: 'Bearer ' + token } });
+        if (!r.ok) return;
+        const j = await r.json();
+        document.getElementById('userName').textContent = j.email.split('@')[0];
+      } catch {}
+    })();
+  </script>
 
   <script src="admin.js"></script>
 </body>

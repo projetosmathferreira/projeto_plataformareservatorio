@@ -31,7 +31,7 @@ function jwtPayload(tk){
 function createLoadingOverlay() {
   const el = document.createElement('div');
   el.id = 'loading';
-  el.className = 'absolute inset-0 hidden  backdrop-blur-[10px] flex items-center justify-center';
+  el.className = 'fixed inset-0 hidden  backdrop-blur-[10px] flex items-center justify-center';
   el.innerHTML = `<div class="h-12 w-12 rounded-full border-4 border-blue-500 border-t-transparent animate-spin"></div>`;
   document.body.appendChild(el);
   return el;
@@ -191,8 +191,8 @@ function createReservatorioCard(r) {
             <span>Litragem atual / total</span>
             <span id="litrosTxt-${r.id}" class="font-medium text-gray-900">-- / ${r.volume_l} L</span>
           </div>
-          <div class="w-full h-2 bg-gray-200 rounded overflow-hidden">
-            <div id="litrosBar-${r.id}" class="h-2 bg-green-600" style="width:0%"></div>
+          <div class="w-full h-4 bg-gray-200 rounded overflow-hidden transition-all linear">
+            <div id="litrosBar-${r.id}" class="h-4 bg-green-600 transition-all linear" style="width:0%"></div>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-2">
@@ -205,9 +205,9 @@ function createReservatorioCard(r) {
             <div id="ph-${r.id}" class="text-lg font-semibold text-gray-800 mt-0.5">--.-</div>
           </div>
         </div>
-        <div class="rounded border bg-gray-50 p-2">
+        <div class="rounded h-auto border bg-gray-50 p-2">
           <div class="text-[11px] mb-1 text-gray-600">Últimos registros</div>
-          <ul id="list-${r.id}" class="text-[12px] max-h-24 space-y-0.5"></ul>
+          <ul id="list-${r.id}" class="text-[12px] h-auto space-y-0.5"></ul>
         </div>
         <div class="mt-1 flex justify-end">
           <a href="historico.html?rid=${r.id}&nome=${encodeURIComponent(r.nome)}&vol=${r.volume_l}" class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded shadow">
@@ -252,7 +252,7 @@ function startSSE() {
       const li = document.createElement('li');
       li.textContent = `-> ${new Date(registro.recorded_at).toLocaleString()} • ${pct.toFixed(1)}% (${litrosAtuais} L) • ${Number(registro.temperatura_c).toFixed(1)}°C • pH ${registro.ph}`;
       listEl.prepend(li);
-      while (listEl.children.length > 24) listEl.removeChild(listEl.lastChild);
+      while (listEl.children.length > 5) listEl.removeChild(listEl.lastChild);
 
       litrosTxt.innerHTML = `<span class="text-gray-900 font-semibold">${litrosAtuais} L</span> <span class="text-gray-500">/ ${volume} L</span>`;
       litrosBar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
@@ -305,6 +305,11 @@ async function init() {
           li.textContent = `-> ${new Date(reg.recorded_at).toLocaleString()} • ${pct.toFixed(1)}% (${litros} L) • ${Number(reg.temperatura_c).toFixed(1)}°C • pH ${reg.ph}`;
           listEl.prepend(li);
         });
+
+       
+        while (listEl.children.length > 5) listEl.removeChild(listEl.lastChild);
+
+
         if (regs.length) {
           const last = regs[0];
           const pct = Number(last.nivel_percent) || 0;
@@ -325,6 +330,8 @@ async function init() {
       card._refs = { listEl, tempEl, phEl, canvas, volume: r.volume_l, litrosTxt, litrosBar };
       cards.push(card);
     }
+
+
     window.addEventListener('resize', () => {
       for (const c of cards) drawTank(c._refs.canvas, Number(c._refs.canvas._level || 0));
     }, { passive: true });
