@@ -381,6 +381,62 @@ app.get("/admin/overview", auth, adminOnly, async (req, res) => {
   }
 });
 
+// ========= RECEBIMENTO DE REGISTROS (ESP → Banco) =========
+// Rota SEM auth, pensada para o ESP enviar medições
+
+app.post("/api/registros", async (req, res) => {
+  try {
+    const {
+      client_role_id,
+      reservatorio_id,
+      nivel_percent,
+      temperatura_c,
+      ph
+    } = req.body || {};
+
+    // validações básicas
+    const roleId  = Number(client_role_id);
+    const resId   = Number(reservatorio_id);
+    const nivel   = Number(nivel_percent);
+    const temp    = (temperatura_c === undefined || temperatura_c === null)
+      ? null
+      : Number(temperatura_c);
+    const phVal   = (ph === undefined || ph === null)
+      ? null
+      : Number(ph);
+
+    if (!Number.isInteger(roleId) || !Number.isInteger(resId) || !Number.isFinite(nivel)) {
+      return res.status(400).json({ error: "client_role_id, reservatorio_id e nivel_percent são obrigatórios e numéricos." });
+    }
+
+    // garante que o reservatório pertence ao role informado
+    const rCheck = await pool.query(
+      "SELECT id FROM reservatorios WHERE id = $1 AND role_id = $2",
+      [resId, roleId]
+    );
+    if (!rCheck.rowCount) {
+      return res.status(403).json({ error: "reservatório não pertence a este client_role_id" });
+    }
+
+    // insere registro
+    const rInsert = await pool.query(
+      `INSERT INTO registros (reservatorio_id, nivel_percent, temperatura_c, ph)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, reservatorio_id, nivel_percent, temperatura_c, ph, recorded_at`,
+      [resId, nivel, temp, phVal]
+    );
+
+    // a trigger do banco já deve cuidar do NOTIFY para o SSE
+    return res.status(201).json({ registro: rInsert.rows[0] });
+  } catch (e) {
+    console.error("Erro em POST /api/registros:", e);
+    return res.status(500).json({ error: "erro interno ao registrar medição" });
+  }
+});
+
+
+
+
 // ========= SSE =========
 
 // ======== SSE (tempo real) ======== //
