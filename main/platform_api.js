@@ -110,7 +110,7 @@ app.get("/reservatorios/:id/ultimos", auth, async (req, res) => {
 
     const limitQ = Math.min(Math.max(parseInt(req.query.limit || "20", 10), 1), 200);
     const r = await pool.query(
-      `SELECT id, reservatorio_id, nivel_percent, temperatura_c, ph, recorded_at
+      `SELECT id, reservatorio_id, nivel_percent, temperatura_c, ph, turbidez, recorded_at
        FROM registros
        WHERE reservatorio_id=$1
        ORDER BY recorded_at DESC
@@ -141,7 +141,7 @@ app.get("/reservatorios/:id/registros", auth, async (req, res) => {
       : 10;
 
     let sql = `
-      SELECT id, reservatorio_id, nivel_percent, temperatura_c, ph, recorded_at
+      SELECT id, reservatorio_id, nivel_percent, temperatura_c, ph, turbidez, recorded_at
       FROM registros
       WHERE reservatorio_id = $1
     `;
@@ -391,7 +391,8 @@ app.post("/api/registros", async (req, res) => {
       reservatorio_id,
       nivel_percent,
       temperatura_c,
-      ph
+      ph,
+      turbidez
     } = req.body || {};
 
     // validações básicas
@@ -404,6 +405,9 @@ app.post("/api/registros", async (req, res) => {
     const phVal   = (ph === undefined || ph === null)
       ? null
       : Number(ph);
+    const turbidezVal = (turbidez === undefined || turbidez === null)
+      ? null
+      : Number(turbidez);
 
     if (!Number.isInteger(roleId) || !Number.isInteger(resId) || !Number.isFinite(nivel)) {
       return res.status(400).json({ error: "client_role_id, reservatorio_id e nivel_percent são obrigatórios e numéricos." });
@@ -420,10 +424,10 @@ app.post("/api/registros", async (req, res) => {
 
     // insere registro
     const rInsert = await pool.query(
-      `INSERT INTO registros (reservatorio_id, nivel_percent, temperatura_c, ph)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, reservatorio_id, nivel_percent, temperatura_c, ph, recorded_at`,
-      [resId, nivel, temp, phVal]
+      `INSERT INTO registros (reservatorio_id, nivel_percent, temperatura_c, ph, turbidez)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, reservatorio_id, nivel_percent, temperatura_c, ph, turbidez, recorded_at`,
+      [resId, nivel, temp, phVal, turbidezVal]
     );
 
     // a trigger do banco já deve cuidar do NOTIFY para o SSE

@@ -102,6 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="border p-2 text-right">${litros.toLocaleString()} L</td>
           <td class="border p-2 text-right">${isFinite(temp) ? temp.toFixed(1) : '--'} °C</td>
           <td class="border p-2 text-right">${r.ph}</td>
+          <td class="border p-2 text-right">${r.turbidez}</td>
         `;
         tbody.appendChild(tr);
       }
@@ -114,6 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const nivel  = Number(r.nivel_percent) || 0;
         const litros = Math.round(nivel * vol / 100);
         const temp   = Number(r.temperatura_c);
+        
 
         const card = document.createElement('div');
         card.className = "border rounded p-3 bg-white shadow-sm";
@@ -135,6 +137,10 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="flex items-center justify-between">
               <span class="text-gray-600">pH</span>
               <span class="font-semibold">${r.ph}</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-gray-600">Turbidez (UNT)</span>
+              <span class="font-semibold">${r.turbidez}</span>
             </div>
           </div>
         `;
@@ -182,11 +188,12 @@ document.addEventListener('DOMContentLoaded', () => {
         `${nivel.toFixed(1)}%`,
         `${litros.toLocaleString()} L`,
         isFinite(temp) ? `${temp.toFixed(1)} °C` : '--',
-        String(r.ph)
+        String(r.ph),
+        String(r.turbidez),
       ];
     });
 
-    const head = [['Data/Hora', 'Nível (%)', 'Litragem Atual (L)', 'Temperatura (°C)', 'pH']];
+    const head = [['Data/Hora', 'Nível (%)', 'Litragem Atual (L)', 'Temperatura (°C)', 'pH', 'Turbidez (UNT)']];
 
     if (typeof doc.autoTable !== 'function') {
       alert('autoTable não carregado. Adicione o plugin jsPDF-AutoTable.');
